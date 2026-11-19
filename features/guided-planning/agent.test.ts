@@ -267,6 +267,15 @@ describe("대화", () => {
       }
     });
 
+    it("범위에 없는 일(요약, 추천, 기록, 검색 등)을 확인하라고 하면 다시 받는다", async () => {
+      const inScope = { ...good, result: "동네를 고르면 화면에 동네 이름이 보인다", scope: ["동네 한 곳을 고른다", "고른 동네를 본다"], verification: ["동네를 고르면 동네 이름이 화면에 보인다"] };
+      for (const outside of ["동네를 고르면 한 줄 요약이 화면에 보인다", "동네를 고르면 추천 목록이 화면에 보인다", "동네를 고르면 이전 기록이 화면에 보인다", "동네를 검색하면 결과가 화면에 보인다"]) {
+        const f = seq(replyOf({ ...inScope, verification: [outside] }), replyOf(inScope));
+        await handleAgentRequest(specBase, f);
+        expect(f).toHaveBeenCalledTimes(2);
+      }
+    });
+
     it("범위나 결과에 알림이 들어 있으면 알림을 확인하는 방법은 허용한다", async () => {
       const f = seq(replyOf({ ...good, verification: ["동네를 고르고 다음 날 아침에 알림이 오는지 본다"] }));
       await handleAgentRequest(specBase, f);
