@@ -116,7 +116,7 @@ function asConnection(v: unknown): Connection {
 function wireMessages(input: ChatInput, history: ChatMessage[]): WireMessage[] {
   const wire: WireMessage[] = [{ role: "system", content: chatSystemPrompt(input) }];
   for (const m of history) wire.push({ role: m.role === "agent" ? "assistant" : "user", content: m.text });
-  if (input.reflect) wire.push({ role: "user", content: reflectMessage(input.reflect) });
+  if (input.reflect) wire.push({ role: "user", content: reflectMessage(input.reflect, input.stage) });
   else if (!history.length) wire.push({ role: "user", content: KICKOFF_MESSAGE });
   return wire;
 }

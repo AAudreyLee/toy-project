@@ -62,8 +62,12 @@ export function chatSystemPrompt(input: ChatInput): string {
 
 export const KICKOFF_MESSAGE = "(대화를 시작해 주세요.)";
 
-export function reflectMessage(change: string): string {
-  return `서비스 방향이 바뀌었습니다. 바뀐 내용:\n${change}\n\n이 변화에 맞춰 현재 Spec 문서를 고쳐 주세요. 바뀐 항목만 doc에 담고, 질문은 하지 마세요.`;
+export function reflectMessage(change: string, stage: Stage): string {
+  const target = stage === "spec" ? "현재 Spec 문서" : "현재 서비스 방향 문서";
+  return `이전 단계의 내용이 바뀌었습니다. 바뀐 내용:
+${change}
+
+이 변화에 맞춰 ${target}를 고쳐 주세요. 바뀐 항목만 doc에 담고, 질문은 하지 마세요.`;
 }
 
 export function ideasPrompt(materials: string[], avoid: string[]): { system: string; user: string } {
