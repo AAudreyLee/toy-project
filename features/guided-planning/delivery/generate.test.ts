@@ -66,7 +66,7 @@ describe("생성된 코드 검사", () => {
 describe("지원 범위 판정", () => {
   it("키가 필요 없는 시스템은 구현을 시작할 수 있다고 판정한다", async () => {
     const res = await judgeSupport(connection, spec, direction, azure(JSON.stringify({ supported: true, reason: "", hint: "" })));
-    expect(res).toEqual({ supported: true, reason: "", hint: "" });
+    expect(res).toEqual({ supported: true, needsDatabase: false, reason: "", hint: "" });
   });
 
   it("저장이나 알림 발송이 필요하면 이유와 고치는 방법을 돌려준다", async () => {

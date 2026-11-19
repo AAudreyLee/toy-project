@@ -12,6 +12,8 @@ export type RunInput = {
   connection: Connection;
   vercelToken: string;
   repoName: string;
+  /** 첫 Spec이 서버에 데이터를 저장해야 해서 데이터베이스까지 만들어야 하는지 */
+  needsDatabase?: boolean;
   onChange: (d: DeliveryState) => void;
   sleep?: (ms: number) => Promise<void>;
   maxPolls?: number;
@@ -20,14 +22,16 @@ export type RunInput = {
 const MAX_FIXES = 2;
 const POLL_MS = 3000;
 const DEFAULT_MAX_POLLS = 100;
-const CODES: DeliveryErrorCode[] = ["github-auth", "vercel-auth", "vercel-git", "name-taken", "build", "unsupported", "failed"];
+const CODES: DeliveryErrorCode[] = ["github-auth", "vercel-auth", "vercel-git", "neon-missing", "name-taken", "build", "unsupported", "failed"];
 
 /** 코드 만들기부터 배포 확인까지 이어서 실행한다. 이미 끝낸 단계는 건너뛰므로 실패한 단계부터 다시 시도할 수 있다. */
 export async function runDelivery(input: RunInput): Promise<DeliveryState> {
   const sleep = input.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const maxPolls = input.maxPolls ?? DEFAULT_MAX_POLLS;
   // 빌드 실패로 멈춘 뒤 다시 시도하면 자동 수정 기회도 처음부터 다시 쓴다.
+  const needsDb = input.needsDatabase === true;
   let d = beginRun(input.delivery.error?.code === "build" ? { ...input.delivery, fixAttempts: 0 } : input.delivery, input.repoName);
+  d = { ...d, needsDatabase: needsDb, databaseId: d.databaseId ?? null };
   const emit = (next: DeliveryState) => {
     d = next;
     input.onChange(next);
@@ -54,7 +58,7 @@ export async function runDelivery(input: RunInput): Promise<DeliveryState> {
 
   if (todo("generate")) {
     emit(stepStarted(d, "generate"));
-    const r = await call({ kind: "generate", connection: input.connection, spec: input.spec, direction: input.direction, repoName: d.repoName });
+    const r = await call({ kind: "generate", connection: input.connection, spec: input.spec, direction: input.direction, repoName: d.repoName, database: needsDb });
     if (!r.ok) return fail("generate", r);
     emit(stepDone(d, "generate", { files: r.files as Record<string, string> }));
   }
@@ -79,6 +83,19 @@ export async function runDelivery(input: RunInput): Promise<DeliveryState> {
     const r = await call({ kind: "project", vercelToken: input.vercelToken, owner: d.owner, repo: d.repoName });
     if (!r.ok) return fail("project", r);
     emit(stepDone(d, "project", { projectId: String(r.projectId) }));
+  }
+
+  if (needsDb && todo("database")) {
+    emit(stepStarted(d, "database"));
+    // 만든 데이터베이스 ID는 바로 남겨 두어, 연결에서 실패해도 다시 시도할 때 새로 만들지 않는다.
+    if (!d.databaseId) {
+      const r = await call({ kind: "database-create", vercelToken: input.vercelToken, projectId: d.projectId, name: `${d.repoName}-db` });
+      if (!r.ok) return fail("database", r);
+      emit({ ...d, databaseId: String(r.databaseId) });
+    }
+    const c = await call({ kind: "database-connect", vercelToken: input.vercelToken, projectId: d.projectId, databaseId: d.databaseId });
+    if (!c.ok) return fail("database", c);
+    emit(stepDone(d, "database", {}));
   }
 
   if (todo("deploy")) {
@@ -111,7 +128,7 @@ export async function runDelivery(input: RunInput): Promise<DeliveryState> {
       if (attempt >= MAX_FIXES) {
         return failWith("deploy", "build", `배포 빌드가 실패했어요. ${outcome.log.slice(-600) || "빌드 로그를 읽지 못했어요."}`);
       }
-      const fixed = await call({ kind: "fix", connection: input.connection, files: d.files, buildLog: outcome.log });
+      const fixed = await call({ kind: "fix", connection: input.connection, files: d.files, buildLog: outcome.log, database: needsDb });
       if (!fixed.ok) return fail("deploy", fixed);
       const files = fixed.files as Record<string, string>;
       const pushed = await call({ kind: "push", owner: d.owner, repo: d.repoName, files, update: true });

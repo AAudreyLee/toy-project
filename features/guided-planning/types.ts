@@ -27,9 +27,9 @@ export type AgentReply<S extends Stage = Stage> = {
 
 export type StageState<D> = { messages: ChatMessage[]; doc: D; done: boolean };
 
-export type DeliveryStep = "generate" | "repo" | "push" | "project" | "deploy" | "verify";
+export type DeliveryStep = "generate" | "repo" | "push" | "project" | "database" | "deploy" | "verify";
 
-export type DeliveryErrorCode = "github-auth" | "vercel-auth" | "vercel-git" | "name-taken" | "build" | "unsupported" | "failed";
+export type DeliveryErrorCode = "github-auth" | "vercel-auth" | "vercel-git" | "neon-missing" | "name-taken" | "build" | "unsupported" | "failed";
 
 export type DeliveryState = {
   repoName: string;
@@ -40,6 +40,8 @@ export type DeliveryState = {
   repoId: number | null;
   owner: string | null;
   projectId: string | null;
+  needsDatabase: boolean;
+  databaseId: string | null;
   deployUrl: string | null;
   deploymentId: string | null;
   verified: boolean;

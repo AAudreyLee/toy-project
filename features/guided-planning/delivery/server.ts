@@ -3,6 +3,7 @@ import { DeliveryError } from "./errors";
 import { generateFiles, fixFiles, judgeSupport } from "./generate";
 import { commitFiles, createRepo } from "./github";
 import { isValidRepoName } from "./state";
+import { connectDatabase, createDatabase, findNeon, getProjectOwner, isDatabaseConnected } from "./database";
 import { createDeployment, createProject, getBuildLog, getDeployment } from "./vercel";
 
 export type DeliveryResponse = ({ ok: true } & Record<string, unknown>) | { ok: false; code: string; message: string };
@@ -45,6 +46,12 @@ function needGithub(s: Secrets): string {
   return s.githubToken;
 }
 
+function needProject(b: Record<string, unknown>): string {
+  const id = str(b.projectId);
+  if (!id) throw new DeliveryError("failed", "Vercel 프로젝트가 아직 없어요. 먼저 프로젝트를 만들어 주세요.");
+  return id;
+}
+
 function needVercel(b: Record<string, unknown>): string {
   const t = str(b.vercelToken);
   if (!t) throw new DeliveryError("vercel-auth", "Vercel 연결이 필요해요. 먼저 Vercel 토큰을 연결해 주세요.");
@@ -74,11 +81,11 @@ async function run(body: unknown, secrets: Secrets, f: typeof fetch): Promise<De
       return { ok: true, ...r };
     }
     case "generate": {
-      const files = await generateFiles(asConnection(b.connection), { spec: asSpec(b.spec), direction: asDirection(b.direction), repoName: str(b.repoName) }, f);
+      const files = await generateFiles(asConnection(b.connection), { spec: asSpec(b.spec), direction: asDirection(b.direction), repoName: str(b.repoName), database: b.database === true }, f);
       return { ok: true, files };
     }
     case "fix": {
-      const files = await fixFiles(asConnection(b.connection), { files: asFiles(b.files), buildLog: str(b.buildLog) }, f);
+      const files = await fixFiles(asConnection(b.connection), { files: asFiles(b.files), buildLog: str(b.buildLog), database: b.database === true }, f);
       return { ok: true, files };
     }
     case "repo": {
@@ -96,6 +103,25 @@ async function run(body: unknown, secrets: Secrets, f: typeof fetch): Promise<De
       const token = needVercel(b);
       const p = await createProject(token, str(b.repo), `${str(b.owner)}/${str(b.repo)}`, f);
       return { ok: true, projectId: p.id, projectName: p.name };
+    }
+    case "database-create": {
+      const token = needVercel(b);
+      const projectId = needProject(b);
+      const teamId = await getProjectOwner(token, projectId, f);
+      const neon = await findNeon(token, teamId, f);
+      const db = await createDatabase(token, { teamId, configurationId: neon.id, name: str(b.name) }, f);
+      return { ok: true, databaseId: db.id };
+    }
+    case "database-connect": {
+      const token = needVercel(b);
+      const projectId = needProject(b);
+      const teamId = await getProjectOwner(token, projectId, f);
+      const databaseId = str(b.databaseId);
+      // 이미 연결된 데이터베이스를 다시 연결하면 Vercel이 오류를 내므로, 연결되어 있으면 그대로 이어간다.
+      if (await isDatabaseConnected(token, { teamId, projectId, databaseId }, f)) return { ok: true };
+      const neon = await findNeon(token, teamId, f);
+      await connectDatabase(token, { teamId, configurationId: neon.id, databaseId, projectId }, f);
+      return { ok: true };
     }
     case "deploy": {
       const token = needVercel(b);

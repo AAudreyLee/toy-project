@@ -5,6 +5,7 @@ const STAGE_LABELS: Record<DeliveryStep, string> = {
   repo: "저장소 만드는 중",
   push: "올리는 중",
   project: "배포 중",
+  database: "데이터베이스 만드는 중",
   deploy: "배포 중",
   verify: "확인 중",
 };
@@ -45,6 +46,8 @@ export function createDelivery(projectName: string): DeliveryState {
     repoId: null,
     owner: null,
     projectId: null,
+    needsDatabase: false,
+    databaseId: null,
     deployUrl: null,
     deploymentId: null,
     verified: false,

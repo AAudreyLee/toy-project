@@ -14,12 +14,13 @@ import { isValidRepoName, userFacingStage } from "../delivery/state";
 import type { Connection, DeliveryState, DeliveryStep, Progress } from "../types";
 import type { VercelConnection } from "../storage";
 
-type Support = { status: "checking" } | { status: "ok" } | { status: "unsupported"; reason: string; hint: string } | { status: "error"; message: string };
+type Support = { status: "checking" } | { status: "ok"; needsDatabase: boolean } | { status: "unsupported"; reason: string; hint: string } | { status: "error"; message: string };
 
 const STAGES: { label: string; steps: DeliveryStep[] }[] = [
   { label: "코드 만들기", steps: ["generate"] },
   { label: "저장소 만들기", steps: ["repo"] },
   { label: "올리기", steps: ["push"] },
+  { label: "데이터베이스", steps: ["database"] },
   { label: "배포", steps: ["project", "deploy"] },
   { label: "확인", steps: ["verify"] },
 ];
@@ -54,14 +55,15 @@ export function DeliveryScreen({
 }) {
   const d = progress.delivery;
   const [github, setGithub] = useState<GithubStatus | null>(null);
-  const [support, setSupport] = useState<Support>({ status: "checking" });
-  const [repoName, setRepoName] = useState(d.repoName);
+    const [repoName, setRepoName] = useState(d.repoName);
   const [token, setToken] = useState("");
   const [tokenError, setTokenError] = useState<string | null>(null);
   const [tokenChecking, setTokenChecking] = useState(false);
   const [help, setHelp] = useState(false);
   const inflight = useRef(false);
   const delivered = Boolean(d.repoUrl);
+  // 이미 저장소까지 만든 뒤에는 판정을 다시 하지 않고, 처음 판정한 결과로 이어서 진행한다.
+  const [support, setSupport] = useState<Support>(delivered ? { status: "ok", needsDatabase: d.needsDatabase === true } : { status: "checking" });
 
   useEffect(() => {
     void getGithubStatus().then(setGithub);
@@ -76,7 +78,7 @@ export function DeliveryScreen({
     void callDelivery({ kind: "plan", connection, spec: progress.spec.doc, direction: progress.direction.doc }).then((r) => {
       if (cancelled) return;
       if (!r.ok) setSupport({ status: "error", message: String(r.message) });
-      else if (r.supported === true) setSupport({ status: "ok" });
+      else if (r.supported === true) setSupport({ status: "ok", needsDatabase: r.needsDatabase === true });
       else setSupport({ status: "unsupported", reason: String(r.reason ?? ""), hint: String(r.hint ?? "") });
     });
     return () => {
@@ -114,6 +116,7 @@ export function DeliveryScreen({
         connection,
         vercelToken: vercel.token,
         repoName,
+        needsDatabase,
         onChange: (next) => onProgress((p) => ({ ...p, delivery: next })),
       });
     } finally {
@@ -122,6 +125,8 @@ export function DeliveryScreen({
     }
   }
 
+  const needsDatabase = support.status === "ok" && support.needsDatabase;
+  const stages = STAGES.filter((s) => !s.steps.includes("database") || needsDatabase || d.needsDatabase);
   const nameValid = isValidRepoName(repoName);
   const connected = Boolean(github?.connected) && Boolean(vercel);
   const canStart = connected && support.status === "ok" && nameValid && !d.running && !d.verified;
@@ -332,9 +337,18 @@ export function DeliveryScreen({
                 </FieldDescription>
               </Field>
 
+              {needsDatabase && !d.verified && (
+                <Alert>
+                  <AlertTitle>이 시스템은 데이터를 서버에 저장해요</AlertTitle>
+                  <AlertDescription>
+                    누르면 내 Vercel 팀에 새 데이터베이스(Neon)가 만들어지고 이 시스템에 연결돼요. 로그인이 없어서, 배포 주소를 아는 누구나 이 데이터를 보고 고칠 수 있어요.
+                  </AlertDescription>
+                </Alert>
+              )}
+
               {(d.running || d.done.length > 0 || d.error) && (
                 <ol className="flex flex-col gap-1 text-sm" aria-label="진행 상황">
-                  {STAGES.map((s) => {
+                  {stages.map((s) => {
                     const st = stageState(d, s.steps);
                     return (
                       <li key={s.label} className="flex items-center gap-2" data-state={st}>
@@ -355,6 +369,14 @@ export function DeliveryScreen({
                   <AlertDescription>
                     {d.error.message}
                     {d.repoUrl && <span className="mt-1 block">이미 만든 저장소는 그대로 남아 있어요: {d.repoUrl}</span>}
+                    {d.error.code === "neon-missing" && (
+                      <span className="mt-1 block">
+                        <a className="underline underline-offset-4" href="https://vercel.com/marketplace/neon" target="_blank" rel="noopener noreferrer">
+                          Vercel에서 Neon 설치하기
+                        </a>
+                        <span className="mt-1 block">설치를 마쳤다면 아래 &quot;다시 확인&quot;을 눌러 이어서 진행해요.</span>
+                      </span>
+                    )}
                     {d.error.code === "vercel-git" && (
                       <span className="mt-1 block">
                         <a className="underline underline-offset-4" href="https://github.com/apps/vercel" target="_blank" rel="noopener noreferrer">
@@ -378,7 +400,7 @@ export function DeliveryScreen({
 
               <div className="flex flex-wrap items-center gap-2">
                 <Button disabled={!canStart} onClick={() => void start()}>
-                  {d.running ? "진행 중…" : d.error || d.done.length ? "다시 시도" : "만들고 올리기"}
+                  {d.running ? "진행 중…" : d.error?.code === "neon-missing" ? "다시 확인" : d.error || d.done.length ? "다시 시도" : "만들고 올리기"}
                 </Button>
                 {!connected && <span className="text-sm text-muted-foreground">{!github?.connected ? "GitHub" : "Vercel"}를 먼저 연결해 주세요.</span>}
                 {connected && support.status !== "ok" && !delivered && <span className="text-sm text-muted-foreground">만들 수 있는지 확인이 끝나면 눌러요.</span>}
