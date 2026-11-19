@@ -26,7 +26,8 @@ const CODES: DeliveryErrorCode[] = ["github-auth", "vercel-auth", "vercel-git", 
 export async function runDelivery(input: RunInput): Promise<DeliveryState> {
   const sleep = input.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const maxPolls = input.maxPolls ?? DEFAULT_MAX_POLLS;
-  let d = beginRun(input.delivery, input.repoName);
+  // 빌드 실패로 멈춘 뒤 다시 시도하면 자동 수정 기회도 처음부터 다시 쓴다.
+  let d = beginRun(input.delivery.error?.code === "build" ? { ...input.delivery, fixAttempts: 0 } : input.delivery, input.repoName);
   const emit = (next: DeliveryState) => {
     d = next;
     input.onChange(next);

@@ -144,6 +144,16 @@ describe("구현과 배포 실행", () => {
     expect(final.fixAttempts).toBe(0);
   });
 
+  it("빌드 실패로 멈춘 뒤 다시 시도하면 자동 수정 횟수를 처음부터 다시 쓴다", async () => {
+    const failing = fakeApi({ ...happy, poll: () => ({ ok: true, state: "error", url: "u", buildLog: "Type error" }), fix: () => ({ ok: true, files: { "app/page.tsx": "x" } }) });
+    const { final } = await run(failing.api);
+    expect(final.error?.code).toBe("build");
+    const retry = fakeApi({ ...happy, poll: () => [{ ok: true, state: "error", url: "u", buildLog: "Type error" }, { ok: true, state: "ready", url: "https://my-repo.vercel.app" }], fix: () => ({ ok: true, files: { "app/page.tsx": "fixed" } }) });
+    const { final: second } = await run(retry.api, final);
+    expect(retry.calls.map((c) => c.kind)).toContain("fix");
+    expect(second.verified).toBe(true);
+  });
+
   it("배포 주소가 정상 응답을 주지 않으면 완료로 표시하지 않는다", async () => {
     const { api } = fakeApi({ ...happy, verify: () => ({ ok: false, code: "failed", message: "응답이 없어요" }) });
     const { final } = await run(api);

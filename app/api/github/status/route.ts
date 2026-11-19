@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 
+import { DeliveryError } from "@/features/guided-planning/delivery/errors";
 import { getGithubUser } from "@/features/guided-planning/delivery/github";
 
 export async function GET() {
@@ -9,10 +10,13 @@ export async function GET() {
   try {
     const user = await getGithubUser(token);
     return Response.json({ connected: true, login: user.login });
-  } catch {
-    // 만료되었거나 거부된 권한은 지우고 연결되지 않은 상태로 알린다.
-    store.delete("gh_token");
-    return Response.json({ connected: false, expired: true });
+  } catch (e) {
+    // 만료되었거나 거부된 권한만 지운다. GitHub 일시 오류로 연결을 끊지 않는다.
+    if (e instanceof DeliveryError && e.code === "github-auth") {
+      store.delete("gh_token");
+      return Response.json({ connected: false, expired: true });
+    }
+    return Response.json({ connected: true, unknown: true });
   }
 }
 
