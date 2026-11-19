@@ -1,0 +1,2 @@
+- 2026-11-19 | guided-implementation-to-deploy-support | 최종 판정용 55/60회 통과, 매번 통과한 27/30개 사례 졸업 | 잡음 ±13~16점 | Azure OpenAI 배포(이름은 .env.local의 AZURE_OPENAI_DEPLOYMENT) | 커밋은 이 줄을 쓴 뒤 기록
+- 2026-11-19 | guided-implementation-to-deploy-build | 최종 판정용 34/37회 통과, 매번 통과한 14/20개 사례 졸업 | 잡음 ±13~16점 | Azure OpenAI 배포(이름은 .env.local의 AZURE_OPENAI_DEPLOYMENT) | 커밋은 이 줄을 쓴 뒤 기록
