@@ -38,6 +38,22 @@ describe("키 확인", () => {
     if (!missing.ok) expect(missing.message).toContain("배포 이름");
   });
 
+  it("Azure가 돌려준 오류 설명을 문구에 함께 보여 주되, 키 값은 가린다", async () => {
+    const conn = { ...connection, apiKey: "SECRET-KEY-123" };
+    const body = JSON.stringify({ error: { code: "403", message: "Public access is disabled. Key SECRET-KEY-123 is not allowed." } });
+    const res = await handleAgentRequest({ kind: "verify", connection: conn }, vi.fn(async () => new Response(body, { status: 403 })));
+    expect(res).toMatchObject({ ok: false, code: "key" });
+    if (!res.ok) {
+      expect(res.message).toContain("Public access is disabled");
+      expect(res.message).not.toContain("SECRET-KEY-123");
+    }
+  });
+
+  it("오류 본문이 JSON이 아니거나 비어 있어도 상태 코드 문구는 그대로 나온다", async () => {
+    const res = await handleAgentRequest({ kind: "verify", connection }, vi.fn(async () => new Response("", { status: 404 })));
+    if (!res.ok) expect(res.message).toContain("HTTP 404");
+  });
+
   it("세 입력 중 하나라도 비었거나 엔드포인트가 https가 아니면 호출하지 않고 키 문제로 알린다", async () => {
     const f = azure("{}");
     for (const bad of [
