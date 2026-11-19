@@ -37,7 +37,7 @@ export function StartScreen({
     const res = await callAgent({ kind: "verify", connection });
     setChecking(false);
     if (res.ok) onConnected(connection);
-    else setFailed(res.code === "key" ? "입력한 정보로 Azure OpenAI에 연결되지 않았어요. 키, 엔드포인트, 배포 이름을 다시 확인해 주세요." : res.message);
+    else setFailed(res.message);
   }
 
   return (

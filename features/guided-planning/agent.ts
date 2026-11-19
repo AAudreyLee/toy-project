@@ -15,6 +15,13 @@ export type AgentResponse =
 
 const API_VERSION = "2024-10-21";
 const TIMEOUT_MS = 90_000;
+// Azure가 거부한 상태 코드별로 무엇을 확인하면 되는지 알려 준다. 코드는 비밀이 아니라서 화면에 그대로 보여 준다.
+const KEY_HINTS: Record<number, string> = {
+  401: "키가 맞지 않아요. 키를 다시 확인해 주세요.",
+  403: "접근이 막혔어요. 키의 권한이나 Azure 리소스의 네트워크(방화벽) 설정을 확인해 주세요.",
+  404: "배포 이름을 찾지 못했어요. 배포 이름과 엔드포인트 주소를 확인해 주세요.",
+  429: "호출 한도를 넘었어요. 잠시 뒤 다시 시도해 주세요.",
+};
 const MAX_RETRIES = 2;
 
 export class AgentError extends Error {
@@ -89,8 +96,8 @@ export async function callAzure(
   } catch {
     throw new AgentError("failed", "Azure OpenAI에 연결하지 못했어요.");
   }
-  if ([401, 403, 404, 429].includes(res.status)) {
-    throw new AgentError("key", "입력한 정보가 거부되었어요. 키가 만료되었거나 한도를 넘었을 수 있어요.");
+  if (res.status in KEY_HINTS) {
+    throw new AgentError("key", `Azure OpenAI가 요청을 거부했어요 (HTTP ${res.status}). ${KEY_HINTS[res.status]}`);
   }
   if (!res.ok) throw new AgentError("failed", `Azure OpenAI가 오류를 돌려줬어요 (${res.status}).`);
   try {
