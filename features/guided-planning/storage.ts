@@ -16,7 +16,7 @@ function looksLikeProgress(v: unknown): v is Progress {
   const p = v as Progress | null;
   return (
     !!p &&
-    ["find", "direction", "spec"].includes(p.view) &&
+    ["find", "direction", "spec", "delivery"].includes(p.view) &&
     typeof p.projectName === "string" &&
     Array.isArray(p.direction?.messages) &&
     typeof p.direction?.doc === "object" &&

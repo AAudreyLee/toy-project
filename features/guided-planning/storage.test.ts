@@ -85,3 +85,15 @@ describe("Vercel 토큰 보관", () => {
     expect(loadProgress(localStorage)).toEqual(p);
   });
 });
+
+describe("4단계 화면 보존", () => {
+  it("4단계(delivery) 화면에서 저장한 진행 상황을 새로고침해도 처음 상태로 되돌리지 않는다", () => {
+    let p = chooseIdea(createProgress(), "체크리스트");
+    p = { ...p, view: "delivery", direction: { ...p.direction, done: true }, spec: { ...p.spec, done: true }, finished: true };
+    saveProgress(localStorage, p);
+    const loaded = loadProgress(localStorage);
+    expect(loaded.view).toBe("delivery");
+    expect(loaded.idea).toBe("체크리스트");
+    expect(loaded.spec.done).toBe(true);
+  });
+});
