@@ -16,7 +16,7 @@ const API_VERSION = "2024-10-21";
 const TIMEOUT_MS = 90_000;
 const MAX_RETRIES = 2;
 
-class AgentError extends Error {
+export class AgentError extends Error {
   constructor(
     readonly code: "key" | "failed" | "invalid",
     message: string,
@@ -25,7 +25,7 @@ class AgentError extends Error {
   }
 }
 
-function extractJson(text: string): unknown {
+export function extractJson(text: string): unknown {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const body = (fenced ? fenced[1] : text).trim();
   const start = body.indexOf("{");
@@ -60,9 +60,9 @@ export function parseIdeas(text: string): Idea[] {
   return ideas;
 }
 
-type WireMessage = { role: "system" | "user" | "assistant"; content: string };
+export type WireMessage = { role: "system" | "user" | "assistant"; content: string };
 
-async function callAzure(
+export async function callAzure(
   c: Connection,
   messages: WireMessage[],
   opts: { json: boolean; maxTokens: number },

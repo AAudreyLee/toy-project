@@ -21,9 +21,10 @@ import {
   showEditNotice,
   stepViews,
 } from "../progress";
-import { loadConnection, loadProgress, saveConnection, saveProgress } from "../storage";
+import { clearVercelToken, loadConnection, loadProgress, loadVercelToken, saveConnection, saveProgress, saveVercelToken, type VercelConnection } from "../storage";
 import type { Connection, Progress, Stage } from "../types";
 import { ChatScreen, type ChatError } from "./ChatScreen";
+import { DeliveryScreen } from "./DeliveryScreen";
 import { FindScreen } from "./FindScreen";
 import { NextBar, Roadmap } from "./Roadmap";
 import { StartScreen } from "./StartScreen";
@@ -53,6 +54,8 @@ export function GuidedPlanning() {
   const [loading, setLoading] = useState<Stage | null>(null);
   const [errors, setErrors] = useState<Partial<Record<Stage, ChatError>>>({});
   const [highlight, setHighlight] = useState<string[]>([]);
+  const [vercel, setVercel] = useState<VercelConnection | null>(null);
+  const [githubFlash, setGithubFlash] = useState<"connected" | "error" | null>(null);
   const progressRef = useRef(progress);
   const inflight = useRef(false);
   const lastReflect = useRef<Partial<Record<Stage, string>>>({});
@@ -62,6 +65,13 @@ export function GuidedPlanning() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setProgress(loadProgress(localStorage));
     setConn(loadConnection(localStorage));
+    setVercel(loadVercelToken(localStorage));
+    // GitHub 승인 화면에서 돌아오면 결과를 한 번 알리고 주소의 표시를 지운다.
+    const flash = new URLSearchParams(window.location.search).get("github");
+    if (flash === "connected" || flash === "error") {
+      setGithubFlash(flash);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
     setReady(true);
   }, []);
 
@@ -101,7 +111,7 @@ export function GuidedPlanning() {
 
   // 단계에 처음 들어와 대화가 비어 있으면 agent가 먼저 말을 건다.
   useEffect(() => {
-    if (!ready || !conn || changingKey || progress.view === "find") return;
+    if (!ready || !conn || changingKey || progress.view === "find" || progress.view === "delivery") return;
     const stage = progress.view;
     if (progress[stage].messages.length > 0 || loading || errors[stage] || inflight.current) return;
     inflight.current = true;
@@ -128,7 +138,7 @@ export function GuidedPlanning() {
     );
   }
 
-  const stage = progress.view === "find" ? null : progress.view;
+  const stage = progress.view === "find" || progress.view === "delivery" ? null : progress.view;
   const reviewStep: 2 | 3 | null = stage === "direction" && progress.review[2] ? 2 : stage === "spec" && progress.review[3] ? 3 : null;
 
   function send(s: Stage, text: string) {
@@ -195,10 +205,11 @@ export function GuidedPlanning() {
         <Card className="items-center px-5 py-7 text-center">
           <Badge className="w-fit">1~3단계 완료</Badge>
           <h2 className="text-lg font-semibold">&apos;{progress.projectName}&apos; Spec이 준비됐어요</h2>
-          <p className="text-sm text-muted-foreground">서비스 방향과 첫 Spec을 내려받아 두세요. 4단계 구현과 5단계 배포는 다음 업데이트에서 열려요.</p>
+          <p className="text-sm text-muted-foreground">서비스 방향과 첫 Spec을 내려받아 두거나, 바로 4단계로 가서 내 GitHub에 올리고 Vercel에 배포해 보세요.</p>
           <div className="flex flex-wrap justify-center gap-2">
             <Button onClick={() => download("direction", progress)}>서비스 방향 .md</Button>
             <Button onClick={() => download("spec", progress)}>첫 Spec .md</Button>
+            <Button onClick={() => setProgress(openStep(progress, 4))}>구현하고 배포하기</Button>
             <Button variant="outline" onClick={() => setProgress(openStep(progress, 2))}>
               서비스 방향 다시 고치기
             </Button>
@@ -206,6 +217,23 @@ export function GuidedPlanning() {
         </Card>
       ) : (
         <NextBar text={nextAction(progress)}>{action}</NextBar>
+      )}
+
+      {progress.view === "delivery" && (
+        <DeliveryScreen
+          progress={progress}
+          connection={conn}
+          vercel={vercel}
+          githubFlash={githubFlash}
+          onVercel={(v) => {
+            if (v) saveVercelToken(localStorage, v);
+            else clearVercelToken(localStorage);
+            setVercel(v);
+          }}
+          onProgress={(update) => setProgress(update)}
+          onBackToSpec={() => setProgress(openStep(progress, 3))}
+          onKeyProblem={() => setChangingKey(true)}
+        />
       )}
 
       {progress.view === "find" && (
