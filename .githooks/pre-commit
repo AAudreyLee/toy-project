@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# 커밋 전 자동 기능 검사. 코드(app/features/components/lib) 변경이 있을 때만 실행한다.
+# 건너뛰기: SKIP_VERIFY=1 git commit ...
+cd "$(git rev-parse --show-toplevel)"
+[ "${SKIP_VERIFY:-}" = 1 ] && exit 0
+git diff --cached --name-only --diff-filter=ACMR | grep -qE '^(app|features|components|lib|e2e)/|^(package\.json|bun\.lock)$' || exit 0
+echo "pre-commit: 기능 검사 실행 중..."
+bash scripts/verify.sh --staged
