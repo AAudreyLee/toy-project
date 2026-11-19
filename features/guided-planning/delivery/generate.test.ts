@@ -47,6 +47,12 @@ describe("생성된 코드 검사", () => {
     expect(validateGenerated({ "app/page.tsx": rel, "components/A.tsx": goodPage })).toEqual([]);
   });
 
+  it("import 문 없이 다른 패키지를 끌어오는 JSX 지시 주석과 require도 안 된다(설치되지 않은 패키지 오류의 원인)", () => {
+    const pragma = "/** @jsxImportSource @emotion/react */\n" + goodPage;
+    expect(validateGenerated({ "app/page.tsx": pragma }).join()).toContain("@jsx");
+    expect(validateGenerated({ "app/page.tsx": goodPage + 'const x = require("lodash");\n' }).join()).toContain("require");
+  });
+
   it("환경 변수와 비밀 값을 쓰면 안 된다", () => {
     expect(validateGenerated({ "app/page.tsx": goodPage + "const k = process.env.SECRET;\n" }).join()).toContain("환경 변수");
   });

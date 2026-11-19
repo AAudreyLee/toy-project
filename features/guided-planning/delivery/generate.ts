@@ -86,6 +86,8 @@ export function validateGenerated(files: Record<string, string>): string[] {
     if (!content.trim()) problems.push(`${path} 파일이 비어 있어요.`);
     if (content.length > MAX_FILE_CHARS) problems.push(`${path} 파일이 너무 커요. 더 작게 만들어 주세요.`);
     if (/process\.env|import\.meta\.env/.test(content)) problems.push(`${path}에서 환경 변수를 쓸 수 없어요. 키나 비밀 값 없이 동작해야 해요.`);
+    if (/@jsx(?:ImportSource|Runtime|Frag)?\b/.test(content)) problems.push(`${path}에서 @jsx 지시 주석을 쓸 수 없어요. 설치되지 않은 패키지를 끌어와 빌드가 실패해요.`);
+    if (/\brequire\s*\(/.test(content)) problems.push(`${path}에서 require를 쓸 수 없어요. react, next, 프로젝트 안의 파일만 import로 가져와요.`);
     const specifiers = [...content.matchAll(/(?:from|import\()\s*["']([^"']+)["']/g)].map((m) => m[1]);
     for (const s of specifiers) {
       const ok = s === "react" || s === "react-dom" || s.startsWith("next/") || s.startsWith("./") || s.startsWith("../") || s.startsWith("@/");
