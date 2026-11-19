@@ -239,6 +239,36 @@ describe("대화", () => {
       }
     });
 
+    it.each(["기록이 잘 되었는지 다시 확인한다", "올바른 통화의 환율이 반영되는지 확인한다", "받은 정보와 기상청의 수치를 비교한다", "이메일 내용이 요약이 잘 되었는지 본다"])(
+      "막연하거나 정확성을 따지는 확인 방법(%s)은 다시 받는다",
+      async (vagueItem) => {
+        const f = seq(replyOf({ ...good, verification: [good.verification[0], vagueItem] }), replyOf(good));
+        await handleAgentRequest(specBase, f);
+        expect(f).toHaveBeenCalledTimes(2);
+      },
+    );
+
+    it("확인 방법이 범위에 없는 기능(알림 전송, 다른 사람)을 확인하라고 하면 다시 받는다", async () => {
+      const inScope = { ...good, result: "동네를 고르면 화면에 동네 이름이 보인다", scope: ["동네 한 곳을 고른다", "고른 동네를 본다"], verification: ["동네를 고르면 동네 이름이 화면에 보인다"] };
+      for (const outside of ["선택한 일정이 그룹원들에게 알림으로 전송되는지 확인한다", "다른 사람들의 일정을 확인할 수 있는지 본다"]) {
+        const f = seq(replyOf({ ...inScope, verification: [inScope.verification[0], outside] }), replyOf(inScope));
+        await handleAgentRequest(specBase, f);
+        expect(f).toHaveBeenCalledTimes(2);
+      }
+    });
+
+    it("범위나 결과에 알림이 들어 있으면 알림을 확인하는 방법은 허용한다", async () => {
+      const f = seq(replyOf({ ...good, verification: ["동네를 고르고 다음 날 아침에 알림이 오는지 본다"] }));
+      await handleAgentRequest(specBase, f);
+      expect(f).toHaveBeenCalledTimes(1);
+    });
+
+    it("화면에서 무엇을 보면 되는지 적힌 구체적인 확인 방법은 다시 받지 않는다", async () => {
+      const f = seq(replyOf({ ...good, verification: ["아침 7시에 메신저로 미세먼지 정보를 받는다", "동네를 고르면 선택한 동네 이름이 화면에 보인다"] }));
+      await handleAgentRequest(specBase, f);
+      expect(f).toHaveBeenCalledTimes(1);
+    });
+
     it("바뀐 방향 반영 요청인데 Spec이 하나도 바뀌지 않으면 다시 받는다", async () => {
       const f = seq({ message: "반영했어요", doc: {} }, replyOf(good));
       const res = await handleAgentRequest({ ...specBase, doc: good, messages: [{ role: "agent", text: "옛 질문" }], reflect: "약속하는 변화: 시간을 직접 고른다" }, f);
