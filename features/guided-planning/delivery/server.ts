@@ -1,7 +1,7 @@
 import type { Connection, DirectionDoc, SpecDoc } from "../types";
 import { DeliveryError } from "./errors";
 import { generateFiles, fixFiles, judgeSupport } from "./generate";
-import { createRepo, putFiles } from "./github";
+import { commitFiles, createRepo } from "./github";
 import { isValidRepoName } from "./state";
 import { createDeployment, createProject, getBuildLog, getDeployment } from "./vercel";
 
@@ -89,7 +89,7 @@ async function run(body: unknown, secrets: Secrets, f: typeof fetch): Promise<De
     }
     case "push": {
       const token = needGithub(secrets);
-      await putFiles(token, str(b.owner), str(b.repo), asFiles(b.files), f, { update: b.update === true });
+      await commitFiles(token, str(b.owner), str(b.repo), asFiles(b.files), b.update === true ? "빌드 오류 수정" : "첫 코드 추가", f);
       return { ok: true };
     }
     case "project": {
@@ -106,7 +106,7 @@ async function run(body: unknown, secrets: Secrets, f: typeof fetch): Promise<De
       const token = needVercel(b);
       const id = str(b.deploymentId);
       const d = await getDeployment(token, id, f);
-      if (d.state === "error") return { ok: true, state: d.state, url: d.url, buildLog: await getBuildLog(token, id, f) };
+      if (d.state === "error") return { ok: true, state: d.state, url: d.url, reason: d.reason ?? "", buildLog: await getBuildLog(token, id, f) };
       return { ok: true, state: d.state, url: d.url };
     }
     case "verify": {

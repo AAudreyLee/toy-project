@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { DeliveryError } from "./errors";
-import { buildAuthorizeUrl, createRepo, exchangeCode, getGithubUser, putFiles } from "./github";
+import { buildAuthorizeUrl, commitFiles, createRepo, exchangeCode, getGithubUser } from "./github";
 import { createDeployment, createProject, getBuildLog, getDeployment, verifyVercelToken } from "./vercel";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -57,26 +57,37 @@ describe("GitHub 연결", () => {
     await expect(createRepo("t", "dup", f)).rejects.toMatchObject({ code: "name-taken" });
   });
 
-  it("파일을 하나씩 올리고, 경로와 내용(base64)과 메시지가 담긴다", async () => {
-    const f = sequence(json({ content: {} }, 201));
-    await putFiles("t", "octo", "my-repo", { "app/page.tsx": "hello", "a.txt": "b" }, f);
-    expect(f).toHaveBeenCalledTimes(2);
-    const first = lastRequest(f, 0);
-    expect(first.url).toBe("https://api.github.com/repos/octo/my-repo/contents/app/page.tsx");
-    expect(first.init.method).toBe("PUT");
-    expect(Buffer.from(first.body.content, "base64").toString()).toBe("hello");
-    expect(first.body.message).toBeTruthy();
+  it("파일 전체를 한 번의 커밋으로 올린다: 기준 커밋을 읽고, 파일마다 blob과 트리와 커밋을 만든 뒤 main이 새 커밋을 가리키게 한다", async () => {
+    let blob = 0;
+    const calls: { url: string; method: string; body?: Record<string, unknown> }[] = [];
+    const f = vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      calls.push({ url: String(url), method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (method === "GET" && String(url).endsWith("/git/ref/heads/main")) return json({ object: { sha: "c0" } });
+      if (method === "GET" && String(url).endsWith("/git/commits/c0")) return json({ tree: { sha: "t0" } });
+      if (String(url).endsWith("/git/blobs")) return json({ sha: `b${++blob}` }, 201);
+      if (String(url).endsWith("/git/trees")) return json({ sha: "t1" }, 201);
+      if (String(url).endsWith("/git/commits")) return json({ sha: "c1" }, 201);
+      if (method === "PATCH") return json({});
+      return json({ message: "unexpected" }, 500);
+    });
+    await commitFiles("t", "octo", "r", { "app/page.tsx": "hello", "a.txt": "b" }, "첫 코드", f as unknown as typeof fetch);
+    const commits = calls.filter((c) => c.url.endsWith("/git/commits") && c.method === "POST");
+    expect(commits).toHaveLength(1);
+    expect(commits[0].body).toMatchObject({ message: "첫 코드", tree: "t1", parents: ["c0"] });
+    const tree = calls.find((c) => c.url.endsWith("/git/trees"))!;
+    expect(tree.body).toMatchObject({ base_tree: "t0" });
+    expect((tree.body!.tree as { path: string; sha: string }[]).map((e) => e.path).sort()).toEqual(["a.txt", "app/page.tsx"]);
+    const blobs = calls.filter((c) => c.url.endsWith("/git/blobs"));
+    expect(Buffer.from(String(blobs.find((b) => String(b.body!.content) === Buffer.from("hello").toString("base64"))?.body?.content), "base64").toString()).toBe("hello");
+    const patch = calls.find((c) => c.method === "PATCH")!;
+    expect(patch.url).toBe("https://api.github.com/repos/octo/r/git/refs/heads/main");
+    expect(patch.body).toMatchObject({ sha: "c1" });
   });
 
-  it("이미 있는 파일을 고칠 때는 현재 파일의 sha를 읽어 함께 보낸다", async () => {
-    const f = vi.fn(async (_url: string, init?: RequestInit) => (init?.method === "PUT" ? json({ content: {} }) : json({ sha: "abc123" })));
-    await putFiles("t", "octo", "r", { "app/page.tsx": "new" }, f as unknown as typeof fetch, { update: true });
-    const put = f.mock.calls.find(([, init]) => init?.method === "PUT")!;
-    expect(JSON.parse(String(put[1]!.body)).sha).toBe("abc123");
-  });
-
-  it("파일 올리기가 실패하면 실패한 파일을 알린다", async () => {
-    await expect(putFiles("t", "o", "r", { "a.txt": "x" }, sequence(json({ message: "nope" }, 500)))).rejects.toThrow(/a\.txt/);
+  it("파일 올리기가 실패하면 어느 단계에서 실패했는지 알리고, 권한 문제는 연결 오류로 구분한다", async () => {
+    await expect(commitFiles("t", "o", "r", { "a.txt": "x" }, "m", sequence(json({ message: "nope" }, 500)))).rejects.toThrow(/올리지 못했어요/);
+    await expect(commitFiles("t", "o", "r", { "a.txt": "x" }, "m", sequence(json({ message: "Bad credentials" }, 401)))).rejects.toMatchObject({ code: "github-auth" });
   });
 });
 

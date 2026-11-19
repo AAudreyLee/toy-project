@@ -135,6 +135,15 @@ describe("구현과 배포 실행", () => {
     expect(final.verified).toBe(false);
   });
 
+  it("코드로 고칠 수 없는 배포 거부(취약한 Next.js 버전)는 고치려 하지 않고 이유를 그대로 알린다", async () => {
+    const { api, calls } = fakeApi({ ...happy, poll: () => ({ ok: true, state: "error", url: "u", buildLog: "Build Completed", reason: "Vulnerable version of Next.js detected, please update immediately." }) });
+    const { final } = await run(api);
+    expect(calls.map((c) => c.kind)).not.toContain("fix");
+    expect(final.error).toMatchObject({ step: "deploy", code: "build" });
+    expect(final.error?.message).toContain("Vulnerable");
+    expect(final.fixAttempts).toBe(0);
+  });
+
   it("배포 주소가 정상 응답을 주지 않으면 완료로 표시하지 않는다", async () => {
     const { api } = fakeApi({ ...happy, verify: () => ({ ok: false, code: "failed", message: "응답이 없어요" }) });
     const { final } = await run(api);

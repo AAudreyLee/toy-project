@@ -88,12 +88,12 @@ export async function runDelivery(input: RunInput): Promise<DeliveryState> {
       if (!dep.ok) return fail("deploy", dep);
       const deploymentId = String(dep.deploymentId);
 
-      let outcome: { state: "ready" | "error"; url: string; log: string } | null = null;
+      let outcome: { state: "ready" | "error"; url: string; log: string; reason: string } | null = null;
       for (let i = 0; i < maxPolls; i++) {
         const p = await call({ kind: "poll", vercelToken: input.vercelToken, deploymentId });
         if (!p.ok) return fail("deploy", p);
         if (p.state === "ready" || p.state === "error") {
-          outcome = { state: p.state, url: String(p.url), log: String(p.buildLog ?? "") };
+          outcome = { state: p.state, url: String(p.url), log: String(p.buildLog ?? ""), reason: String(p.reason ?? "") };
           break;
         }
         await sleep(POLL_MS);
@@ -105,6 +105,8 @@ export async function runDelivery(input: RunInput): Promise<DeliveryState> {
         break;
       }
 
+      // 취약한 의존성 버전처럼 코드를 고쳐서는 풀 수 없는 거부는 고치려 하지 않고 이유를 그대로 알린다.
+      if (/vulnerable/i.test(outcome.reason)) return failWith("deploy", "build", `Vercel이 배포를 거부했어요: ${outcome.reason}`);
       if (attempt >= MAX_FIXES) {
         return failWith("deploy", "build", `배포 빌드가 실패했어요. ${outcome.log.slice(-600) || "빌드 로그를 읽지 못했어요."}`);
       }

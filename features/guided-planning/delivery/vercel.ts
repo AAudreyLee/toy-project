@@ -97,14 +97,14 @@ export async function getDeployment(
   token: string,
   id: string,
   f: typeof fetch = fetch,
-): Promise<{ state: "ready" | "pending" | "error"; url: string }> {
+): Promise<{ state: "ready" | "pending" | "error"; url: string; reason?: string }> {
   const res = await f(`${API}/v13/deployments/${id}`, { headers: headers(token) });
   if (!res.ok) throw new DeliveryError("failed", `배포 상태를 읽지 못했어요 (${res.status}).`);
-  const d = (await res.json()) as { readyState: string; url: string; alias?: string[] };
+  const d = (await res.json()) as { readyState: string; url: string; alias?: string[]; errorMessage?: string; readyStateReason?: string };
   const state = d.readyState === "READY" ? "ready" : d.readyState === "ERROR" || d.readyState === "CANCELED" ? "error" : "pending";
   // 배포마다 생기는 고유 주소는 Vercel 인증으로 보호될 수 있어서, 프로젝트 주소(별칭)가 있으면 그것을 쓴다.
   const alias = d.alias?.find((a) => a.endsWith(".vercel.app"));
-  return { state, url: `https://${alias ?? d.url}` };
+  return { state, url: `https://${alias ?? d.url}`, ...(state === "error" ? { reason: d.errorMessage ?? d.readyStateReason } : {}) };
 }
 
 export async function getBuildLog(token: string, id: string, f: typeof fetch = fetch): Promise<string> {

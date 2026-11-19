@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { fixFiles, generateFiles, judgeSupport, starterFiles, validateGenerated } from "./generate";
 
@@ -18,6 +20,14 @@ describe("시작 코드", () => {
     for (const p of ["package.json", "tsconfig.json", "next.config.mjs", "app/layout.tsx", "app/globals.css", ".gitignore", "README.md"]) expect(files).toHaveProperty([p]);
     expect(JSON.parse(files["package.json"]).name).toBe("my-repo");
     expect(JSON.parse(files["package.json"]).dependencies).toMatchObject({ next: expect.any(String), react: expect.any(String) });
+  });
+
+  it("Next.js와 React 버전은 이 프로젝트가 쓰는 정확한 버전과 같다(Vercel은 취약한 버전의 배포를 거부한다)", () => {
+    const own = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")).dependencies;
+    const deps = JSON.parse(starterFiles("my-repo")["package.json"]).dependencies;
+    expect(deps.next).toBe(own.next);
+    expect(deps.react).toBe(own.react);
+    expect(deps["react-dom"]).toBe(own["react-dom"]);
   });
 });
 

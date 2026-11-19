@@ -59,11 +59,18 @@ describe("구현·배포 서버 요청", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("생성한 파일을 저장소에 올린다", async () => {
-    const { f, calls } = router({ "https://api.github.com/repos/o/r/contents/": () => json({ content: {} }, 201) });
-    const res = await handleDeliveryRequest({ kind: "push", owner: "o", repo: "r", files: { "a.txt": "x" } }, { githubToken: "t" }, f);
+  it("생성한 파일을 한 번의 커밋으로 저장소에 올린다", async () => {
+    const { f, calls } = router({
+      "https://api.github.com/repos/o/r/git/ref/heads/main": () => json({ object: { sha: "c0" } }),
+      "https://api.github.com/repos/o/r/git/commits/c0": () => json({ tree: { sha: "t0" } }),
+      "https://api.github.com/repos/o/r/git/blobs": () => json({ sha: "b1" }, 201),
+      "https://api.github.com/repos/o/r/git/trees": () => json({ sha: "t1" }, 201),
+      "https://api.github.com/repos/o/r/git/commits": () => json({ sha: "c1" }, 201),
+      "https://api.github.com/repos/o/r/git/refs/heads/main": () => json({}),
+    });
+    const res = await handleDeliveryRequest({ kind: "push", owner: "o", repo: "r", files: { "a.txt": "x", "b.txt": "y" } }, { githubToken: "t" }, f);
     expect(res).toEqual({ ok: true });
-    expect(calls).toHaveLength(1);
+    expect(calls.filter((c) => c.url.endsWith("/git/commits") && c.init?.method === "POST")).toHaveLength(1);
   });
 
   it("Vercel 단계는 토큰이 없으면 토큰 오류로 알린다", async () => {

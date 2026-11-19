@@ -54,7 +54,7 @@ export async function createRepo(
   const res = await f(`${API}/user/repos`, {
     method: "POST",
     headers: apiHeaders(token),
-    body: JSON.stringify({ name, private: true, description: "agent가 첫 Spec으로 만든 시스템", auto_init: false }),
+    body: JSON.stringify({ name, private: true, description: "agent가 첫 Spec으로 만든 시스템", auto_init: true }),
   });
   if (res.status === 401 || res.status === 403) {
     throw new DeliveryError("github-auth", "GitHub에서 저장소를 만들 권한이 없어요. 다시 연결해 주세요.");
@@ -65,35 +65,35 @@ export async function createRepo(
   return { id: d.id, owner: d.owner.login, name: d.name, url: d.html_url };
 }
 
-export async function putFiles(
+/** 파일 전체를 한 번의 커밋으로 main에 올린다. 파일마다 커밋을 만들면 커밋마다 Vercel 배포가 생기므로 쓰지 않는다. */
+export async function commitFiles(
   token: string,
   owner: string,
   repo: string,
   files: Record<string, string>,
+  message: string,
   f: typeof fetch = fetch,
-  opts: { update?: boolean } = {},
 ): Promise<void> {
-  for (const [path, content] of Object.entries(files)) {
-    const encoded = path.split("/").map(encodeURIComponent).join("/");
-    const url = `${API}/repos/${owner}/${repo}/contents/${encoded}`;
-    let sha: string | undefined;
-    if (opts.update) {
-      // 이미 있는 파일을 고칠 때는 현재 파일의 sha가 필요하다. 없으면 새 파일로 올린다.
-      const current = await f(url, { headers: apiHeaders(token) });
-      if (current.ok) sha = ((await current.json()) as { sha?: string }).sha;
-    }
-    const res = await f(url, {
-      method: "PUT",
-      headers: apiHeaders(token),
-      body: JSON.stringify({
-        message: `${opts.update ? "Update" : "Add"} ${path}`,
-        content: Buffer.from(content, "utf8").toString("base64"),
-        ...(sha ? { sha } : {}),
-      }),
-    });
+  const base = `${API}/repos/${owner}/${repo}`;
+  const step = async (name: string, url: string, init?: RequestInit): Promise<Record<string, unknown>> => {
+    const res = await f(url, { ...init, headers: apiHeaders(token) });
     if (res.status === 401 || res.status === 403) {
-      throw new DeliveryError("github-auth", "GitHub에 파일을 올릴 권한이 없어요. 다시 연결해 주세요.");
+      throw new DeliveryError("github-auth", "GitHub에 코드를 올릴 권한이 없어요. 다시 연결해 주세요.");
     }
-    if (!res.ok) throw new DeliveryError("failed", `${path} 파일을 올리지 못했어요 (${res.status}).`);
+    if (!res.ok) throw new DeliveryError("failed", `${name}을(를) 올리지 못했어요 (${res.status}).`);
+    return (await res.json()) as Record<string, unknown>;
+  };
+  const head = ((await step("기준 커밋 확인", `${base}/git/ref/heads/main`)).object as { sha: string }).sha;
+  const baseTree = ((await step("기준 파일 목록 확인", `${base}/git/commits/${head}`)).tree as { sha: string }).sha;
+  const entries: { path: string; mode: string; type: string; sha: string }[] = [];
+  for (const [path, content] of Object.entries(files)) {
+    const blob = await step(`${path} 파일`, `${base}/git/blobs`, {
+      method: "POST",
+      body: JSON.stringify({ content: Buffer.from(content, "utf8").toString("base64"), encoding: "base64" }),
+    });
+    entries.push({ path, mode: "100644", type: "blob", sha: blob.sha as string });
   }
+  const tree = await step("파일 목록", `${base}/git/trees`, { method: "POST", body: JSON.stringify({ base_tree: baseTree, tree: entries }) });
+  const commit = await step("커밋", `${base}/git/commits`, { method: "POST", body: JSON.stringify({ message, tree: tree.sha, parents: [head] }) });
+  await step("브랜치 갱신", `${base}/git/refs/heads/main`, { method: "PATCH", body: JSON.stringify({ sha: commit.sha, force: false }) });
 }
