@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-test("홈 화면이 열리고 시작 안내 제목이 보인다", async ({ page }) => {
+test("첫 화면에서 연결 정보 입력란이 보인다", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page).toHaveTitle("Create Next App");
-  await expect(page.getByRole("heading", { level: 1 })).toContainText(
-    "To get started"
-  );
+  await expect(page).toHaveTitle("아이디어에서 첫 Spec까지");
+  await expect(page.getByLabel("Azure OpenAI API 키")).toBeVisible();
+  await expect(page.getByLabel("엔드포인트 주소")).toBeVisible();
+  await expect(page.getByLabel("배포 이름")).toBeVisible();
 });
