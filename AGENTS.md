@@ -51,3 +51,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Claude API나 Anthropic SDK를 쓰는 작업은 시작 전에 `claude-api` 스킬(`anthropics/skills`)을 먼저 읽는다.
 - 모델 ID, 파라미터, SDK 사용법은 기억에 의존하지 않는다. 작업을 시작할 때 공식 문서 색인 `https://platform.claude.com/llms.txt`에서 관련 문서를 가져오고, 설치된 `@anthropic-ai/sdk` 버전(`package.json`, `bun.lock`)과 맞춰 본다.
 <!-- END:stack-context claude-api -->
+
+# LLM eval
+
+- eval 루트는 `.claude/hillclimb/`이다. 졸업한 회귀 묶음은 `.claude/hillclimb/regression/`에 있고(`log.md`, `cell-history.json`, 기준별 폴더), 아직 목표에 못 닿은 capability eval은 `.claude/hillclimb/guided-planning-to-spec/`에 있다. 결과 폴더(`results/`)는 커밋하지 않는다.

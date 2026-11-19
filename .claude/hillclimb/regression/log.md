@@ -1,0 +1,3 @@
+- 2026-11-19 | guided-implementation-to-deploy-support | 최종 판정용 55/60회 통과, 매번 통과한 27/30개 사례 졸업 | 잡음 ±13~16점 | Azure OpenAI 배포(이름은 .env.local의 AZURE_OPENAI_DEPLOYMENT) | 커밋은 이 줄을 쓴 뒤 기록
+- 2026-11-19 | guided-implementation-to-deploy-build | 최종 판정용 34/37회 통과, 매번 통과한 14/20개 사례 졸업 | 잡음 ±13~16점 | Azure OpenAI 배포(이름은 .env.local의 AZURE_OPENAI_DEPLOYMENT) | 커밋은 이 줄을 쓴 뒤 기록
+- 2026-11-19 | guided-implementation-to-deploy-build (재측정) | 시작 코드를 Next.js 16.4.5로 올린 뒤 최종 판정용 37/39회 통과(95%), 첫 빌드 18/39, 코드 생성 실패 1건 | 잡음 ±16점 | Azure OpenAI 배포 | 평가 도구는 작업 폴더를 기본 폴더 안에 둔다

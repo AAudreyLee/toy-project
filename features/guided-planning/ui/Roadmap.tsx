@@ -44,7 +44,7 @@ export function Roadmap({ steps, onOpen }: { steps: StepView[]; onOpen: (n: numb
           </li>
         ))}
       </ol>
-      <p className="text-xs text-muted-foreground">4 구현과 5 배포는 다음 업데이트에서 열려요.</p>
+      {steps.some((s) => s.status === "locked") && <p className="text-xs text-muted-foreground">4 구현과 5 배포를 하려면 먼저 Spec을 확정해 주세요.</p>}
     </div>
   );
 }

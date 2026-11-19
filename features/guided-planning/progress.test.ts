@@ -122,12 +122,12 @@ describe("다시 확인 필요", () => {
     let p = chooseIdea(createProgress(), "a");
     p = applyAgentReply(p, "direction", reply("네", { oneLine: "x" }));
     p = applyAgentReply(p, "direction", reply("네", { oneLine: "y" }));
-    expect(p.review).toEqual({ 2: false, 3: false });
+    expect(p.review).toEqual({ 2: false, 3: false, 4: false });
   });
 
   it("1단계 아이디어를 바꾸면 이미 진행한 2·3단계가 내용을 유지한 채 다시 확인이 된다", () => {
     const edited = chooseIdea(openStep(throughSpecDone(), 1), "주말 날씨 리포트");
-    expect(edited.review).toEqual({ 2: true, 3: true });
+    expect(edited.review).toEqual({ 2: true, 3: true, 4: false });
     expect(edited.direction.doc.oneLine).toBe("아침 알림");
     expect(edited.spec.doc.result).toBe("알림 한 통을 받는다");
     expect(edited.changeNote).toContain("주말 날씨 리포트");
@@ -135,7 +135,7 @@ describe("다시 확인 필요", () => {
 
   it("같은 아이디어로 다시 시작하면 다시 확인이 되지 않는다", () => {
     const again = chooseIdea(openStep(throughSpecDone(), 1), "아침 미세먼지 알림");
-    expect(again.review).toEqual({ 2: false, 3: false });
+    expect(again.review).toEqual({ 2: false, 3: false, 4: false });
   });
 
   it("다시 확인 상태의 단계는 다른 화면에 있을 때 누를 수 있다", () => {
@@ -152,5 +152,78 @@ describe("지금 할 일", () => {
     const spec = nextAction(finishDirection(chooseIdea(createProgress(), "a")));
     expect(new Set([find, direction, spec]).size).toBe(3);
     for (const t of [find, direction, spec]) expect(t.length).toBeGreaterThan(5);
+  });
+});
+
+describe("4·5단계(구현과 배포)", () => {
+  const withRepo = (p: ReturnType<typeof throughSpecDone>) => ({
+    ...p,
+    delivery: { ...p.delivery, repoUrl: "https://github.com/u/r", done: ["generate", "repo", "push"] as ("generate" | "repo" | "push")[] },
+  });
+
+  it("3단계를 확정하기 전에는 4·5단계가 잠겨 있고 누를 수 없다", () => {
+    const steps = stepViews(chooseIdea(createProgress(), "a"));
+    expect(steps[3]).toMatchObject({ status: "locked", clickable: false });
+    expect(steps[4]).toMatchObject({ status: "locked", clickable: false });
+    expect(openStep(chooseIdea(createProgress(), "a"), 4).view).toBe("direction");
+  });
+
+  it("3단계를 확정하면 4·5단계가 풀려 눌러서 들어갈 수 있다", () => {
+    const p = throughSpecDone();
+    const steps = stepViews(p);
+    expect(steps[3]).toMatchObject({ status: "pending", clickable: true });
+    expect(steps[4]).toMatchObject({ status: "pending", clickable: true });
+    expect(openStep(p, 4).view).toBe("delivery");
+    expect(openStep(p, 5).view).toBe("delivery");
+  });
+
+  it("저장소를 올리면 4단계가 완료되고, 배포 주소가 확인되면 5단계도 완료된다", () => {
+    const p = withRepo(throughSpecDone());
+    const afterRepo = stepViews(p);
+    expect(afterRepo[3].status).toBe("done");
+    expect(afterRepo[4].status).not.toBe("done");
+    const deployed = { ...p, delivery: { ...p.delivery, deployUrl: "https://x.vercel.app", verified: true } };
+    expect(stepViews(deployed)[4].status).toBe("done");
+  });
+
+  it("구현 화면에서는 현재 단계가 4단계이고 저장소를 올린 뒤에는 5단계다", () => {
+    const base = openStep(throughSpecDone(), 4);
+    expect(stepViews(base)[3].isCurrent).toBe(true);
+    expect(stepViews(withRepo(base))[4].isCurrent).toBe(true);
+  });
+
+  it("구현을 마친 뒤 서비스 방향이 바뀌면 4·5단계가 내용을 유지한 채 다시 확인이 된다", () => {
+    let p = openStep(withRepo(throughSpecDone()), 2);
+    p = applyAgentReply(p, "direction", reply("바꿨어요", { promisedChange: "새 약속" }));
+    expect(p.review[4]).toBe(true);
+    expect(p.delivery.repoUrl).toBe("https://github.com/u/r");
+    const steps = stepViews(p);
+    expect(steps[3].status).toBe("review");
+    expect(steps[4].status).toBe("review");
+  });
+
+  it("구현을 마친 뒤 첫 Spec이나 아이디어가 바뀌어도 4·5단계가 다시 확인이 된다", () => {
+    const specEdited = applyAgentReply(openStep(withRepo(throughSpecDone()), 3), "spec", reply("고쳤어요", { result: "다른 결과" }));
+    expect(specEdited.review[4]).toBe(true);
+    const ideaEdited = chooseIdea(openStep(withRepo(throughSpecDone()), 1), "주말 날씨 리포트");
+    expect(ideaEdited.review[4]).toBe(true);
+  });
+
+  it("아직 구현하지 않았다면 앞 단계가 바뀌어도 4·5단계는 다시 확인이 되지 않는다", () => {
+    const p = applyAgentReply(openStep(throughSpecDone(), 2), "direction", reply("바꿨어요", { promisedChange: "새 약속" }));
+    expect(p.review[4]).toBe(false);
+  });
+
+  it("다시 확인 표시는 해결하면 사라진다", () => {
+    let p = openStep(withRepo(throughSpecDone()), 2);
+    p = applyAgentReply(p, "direction", reply("바꿨어요", { promisedChange: "새 약속" }));
+    expect(resolveReview(p, 4).review[4]).toBe(false);
+  });
+
+  it("구현 화면의 지금 할 일은 상태마다 다르다", () => {
+    const start = nextAction(openStep(throughSpecDone(), 4));
+    const done = nextAction(openStep({ ...withRepo(throughSpecDone()), delivery: { ...throughSpecDone().delivery, deployUrl: "https://x", verified: true } }, 5));
+    expect(start).not.toBe(done);
+    expect(start.length).toBeGreaterThan(5);
   });
 });
