@@ -44,3 +44,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 자동 코드 리뷰는 최대 1회, 가장 낮은 강도(`code-review low`)로만 돌린다. 리뷰어를 못 부르면 그 사실만 적고 완료로 본다.
 - 지적 중 스펙의 수용 기준을 깨거나 주 경로가 실제로 깨지는 것만 고친다. 나머지는 `docs/follow-ups/`에 한 줄로 남긴다. 재리뷰는 하지 않는다.
 - 스펙이 요구하지 않은 보안 하드닝·엣지케이스·성능 방어는 범위 밖이다.
+
+<!-- BEGIN:stack-context claude-api -->
+# Claude API (Anthropic SDK)
+
+- Claude API나 Anthropic SDK를 쓰는 작업은 시작 전에 `claude-api` 스킬(`anthropics/skills`)을 먼저 읽는다.
+- 모델 ID, 파라미터, SDK 사용법은 기억에 의존하지 않는다. 작업을 시작할 때 공식 문서 색인 `https://platform.claude.com/llms.txt`에서 관련 문서를 가져오고, 설치된 `@anthropic-ai/sdk` 버전(`package.json`, `bun.lock`)과 맞춰 본다.
+<!-- END:stack-context claude-api -->

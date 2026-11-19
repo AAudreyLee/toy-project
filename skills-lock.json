@@ -36,6 +36,14 @@
       "computedHash": "eba16813afffdfd4c99f3316d94f6120dafce1dce3e9603c984866152d3a3230",
       "installMode": "copy"
     },
+    "claude-api": {
+      "source": "anthropics/skills",
+      "commit": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
+      "sourceType": "github",
+      "skillPath": "skills/claude-api/SKILL.md",
+      "computedHash": "c567eeb8da5332098cb747d97f1a1f482c401a80e089ee069e673744575191bf",
+      "installMode": "copy"
+    },
     "clean-branches": {
       "source": "toy-crane/skills",
       "sourceType": "github",
