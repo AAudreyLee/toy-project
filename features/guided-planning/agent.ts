@@ -2,6 +2,7 @@ import { DIRECTION_LABELS, SPEC_LABELS } from "./documents";
 import { ideaViolations } from "./idea-guard";
 import { specViolations } from "./spec-guard";
 import { chatSystemPrompt, type ChatInput, ideasPrompt, KICKOFF_MESSAGE, reflectMessage } from "./prompts";
+import { resolveConnection } from "./connection";
 import type { AgentReply, ChatMessage, Connection, DirectionDoc, SpecDoc, Stage } from "./types";
 
 export type Idea = { title: string; summary: string };
@@ -123,7 +124,7 @@ function wireMessages(input: ChatInput, history: ChatMessage[]): WireMessage[] {
 
 async function run(body: unknown, fetchImpl: typeof fetch): Promise<AgentResponse> {
   const b = (body ?? {}) as Record<string, unknown>;
-  const connection = asConnection(b.connection);
+  const connection = resolveConnection(asConnection(b.connection));
 
   if (b.kind === "verify") {
     await callAzure(connection, [{ role: "user", content: "ping" }], { json: false, maxTokens: 16 }, fetchImpl);
