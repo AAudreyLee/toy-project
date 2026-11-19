@@ -1,5 +1,6 @@
 import { DIRECTION_LABELS, SPEC_LABELS } from "./documents";
 import { ideaViolations } from "./idea-guard";
+import { specViolations } from "./spec-guard";
 import { chatSystemPrompt, type ChatInput, ideasPrompt, KICKOFF_MESSAGE, reflectMessage } from "./prompts";
 import type { AgentReply, ChatMessage, Connection, DirectionDoc, SpecDoc, Stage } from "./types";
 
@@ -13,7 +14,7 @@ export type AgentResponse =
 
 const API_VERSION = "2024-10-21";
 const TIMEOUT_MS = 90_000;
-const MAX_IDEA_RETRIES = 2;
+const MAX_RETRIES = 2;
 
 class AgentError extends Error {
   constructor(
@@ -99,6 +100,13 @@ async function callAzure(
   }
 }
 
+function specProblems(input: ChatInput, reply: AgentReply): string[] {
+  const touched = Object.keys(reply.doc);
+  if (input.reflect && !touched.length) return ["바뀐 서비스 방향에 맞춰 Spec 문서의 해당 항목을 실제로 고쳐서 doc에 담아 주세요."];
+  if (!touched.length) return [];
+  return specViolations({ ...(input.doc as SpecDoc), ...(reply.doc as Partial<SpecDoc>) });
+}
+
 function asConnection(v: unknown): Connection {
   const c = (v ?? {}) as Record<string, unknown>;
   const s = (x: unknown) => (typeof x === "string" ? x : "");
@@ -141,10 +149,10 @@ async function run(body: unknown, fetchImpl: typeof fetch): Promise<AgentRespons
         throw new AgentError("failed", "agent의 답을 이해하지 못했어요.");
       }
       const problems = ideaViolations(ideas, materials);
-      if (!problems.length || attempt >= MAX_IDEA_RETRIES) return { ok: true, kind: "ideas", ideas };
+      if (!problems.length || attempt >= MAX_RETRIES) return { ok: true, kind: "ideas", ideas };
       wire.push(
         { role: "assistant", content: text },
-        { role: "user", content: `${problems.join("\n")}\n고른 재료(${materials.join(", ")})만으로 가능하게 해당 아이디어를 바꿔서, 아이디어 3개를 같은 JSON 형식으로 다시 주세요.` },
+        { role: "user", content: `${problems.join("\n")}\n이 점을 고쳐서 같은 JSON 형식으로 다시 답해 주세요.` },
       );
     }
   }
@@ -162,11 +170,23 @@ async function run(body: unknown, fetchImpl: typeof fetch): Promise<AgentRespons
       direction: b.direction as DirectionDoc | undefined,
       reflect: typeof b.reflect === "string" && b.reflect.trim() ? b.reflect : undefined,
     };
-    const text = await callAzure(connection, wireMessages(input, history), { json: true, maxTokens: 4000 }, fetchImpl);
-    try {
-      return { ok: true, kind: "chat", reply: parseAgentReply(b.stage, text) };
-    } catch {
-      throw new AgentError("failed", "agent의 답을 이해하지 못했어요.");
+    const wire = wireMessages(input, history);
+    // 3단계 Spec이 규칙에서 벗어나면 이유를 알려 주고 최대 두 번 다시 받는다.
+    for (let attempt = 0; ; attempt++) {
+      const text = await callAzure(connection, wire, { json: true, maxTokens: 4000 }, fetchImpl);
+      let reply: AgentReply;
+      try {
+        reply = parseAgentReply(b.stage, text);
+      } catch {
+        throw new AgentError("failed", "agent의 답을 이해하지 못했어요.");
+      }
+      const problems = input.stage === "spec" ? specProblems(input, reply) : [];
+      if (!problems.length || attempt >= MAX_RETRIES) return { ok: true, kind: "chat", reply };
+      wire.push(
+        { role: "assistant", content: text },
+        { role: "user", content: `${problems.join("\n")}
+이 점을 고쳐서 같은 JSON 형식으로 다시 답해 주세요.` },
+      );
     }
   }
 

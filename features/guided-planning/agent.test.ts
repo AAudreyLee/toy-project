@@ -204,6 +204,66 @@ describe("대화", () => {
     expect(sentBody(f).messages[0].content).toContain("방향 한 줄 정의");
   });
 
+  describe("3단계 Spec 검사", () => {
+    const specBase = {
+      ...chatBase,
+      stage: "spec" as const,
+      doc: { result: "", scope: [], verification: [], notNow: "" },
+      direction: chatBase.doc,
+    };
+    const replyOf = (doc: object) => ({ message: "제안해요. 이대로 갈까요?", doc });
+    const seq = (...bodies: unknown[]) => {
+      let i = 0;
+      return vi.fn(async () =>
+        new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(bodies[Math.min(i++, bodies.length - 1)]) } }] }), { status: 200 }),
+      );
+    };
+    const good = { result: "동네를 고르면 내일 아침 알림이 온다", scope: ["동네 한 곳을 고른다", "아침에 알림 한 통이 온다"], verification: ["동네를 고르고 다음 날 아침에 알림이 오는지 본다"], notNow: "여러 동네" };
+
+    it("범위에 데이터 수집 같은 작업 이름이 있으면 이유를 알려 주고 다시 받는다", async () => {
+      const f = seq(replyOf({ ...good, scope: ["데이터 수집", "디자인"] }), replyOf(good));
+      const res = await handleAgentRequest(specBase, f);
+      expect(f).toHaveBeenCalledTimes(2);
+      expect(res).toMatchObject({ ok: true, reply: { doc: { scope: good.scope } } });
+      const retry = JSON.parse(String((f.mock.calls[1] as unknown as [string, RequestInit])[1].body)).messages.at(-1).content as string;
+      expect(retry).toContain("데이터 수집");
+    });
+
+    it("범위가 5개 이상이거나 확인 방법이 막연하면 다시 받는다", async () => {
+      const tooMany = replyOf({ ...good, scope: ["가", "나", "다", "라", "마"].map((x) => `${x}를 본다`) });
+      const vague = replyOf({ ...good, verification: ["정확한지 확인하기"] });
+      for (const bad of [tooMany, vague]) {
+        const f = seq(bad, replyOf(good));
+        await handleAgentRequest(specBase, f);
+        expect(f).toHaveBeenCalledTimes(2);
+      }
+    });
+
+    it("바뀐 방향 반영 요청인데 Spec이 하나도 바뀌지 않으면 다시 받는다", async () => {
+      const f = seq({ message: "반영했어요", doc: {} }, replyOf(good));
+      const res = await handleAgentRequest({ ...specBase, doc: good, messages: [{ role: "agent", text: "옛 질문" }], reflect: "약속하는 변화: 시간을 직접 고른다" }, f);
+      expect(f).toHaveBeenCalledTimes(2);
+      expect(res).toMatchObject({ ok: true, reply: { doc: { result: good.result } } });
+    });
+
+    it("Spec의 네 항목 중 비어 있는 것이 있으면 채워서 다시 받는다", async () => {
+      const f = seq(replyOf({ result: good.result, scope: good.scope, notNow: good.notNow }), replyOf(good));
+      const res = await handleAgentRequest(specBase, f);
+      expect(f).toHaveBeenCalledTimes(2);
+      expect(res).toMatchObject({ ok: true, reply: { doc: { verification: good.verification } } });
+    });
+
+    it("규칙을 지킨 Spec은 다시 받지 않고, 계속 어긋나도 두 번까지만 다시 받는다", async () => {
+      const fine = seq(replyOf(good));
+      await handleAgentRequest(specBase, fine);
+      expect(fine).toHaveBeenCalledTimes(1);
+      const stubborn = seq(replyOf({ ...good, scope: ["데이터 수집"] }));
+      const res = await handleAgentRequest(specBase, stubborn);
+      expect(stubborn).toHaveBeenCalledTimes(3);
+      expect(res).toMatchObject({ ok: true });
+    });
+  });
+
   it("바뀐 방향 반영 요청에는 바뀐 내용을 함께 보낸다", async () => {
     const f = azure(JSON.stringify({ message: "고쳤어요", doc: { result: "새 결과" } }));
     await handleAgentRequest(
