@@ -1,0 +1,652 @@
+<!--
+  prototype shell: the review chrome every prototype starts from.
+
+  Keep this comment in the prototype you grow from here: it is the contract,
+  and later turns work from that file rather than from this one.
+
+  Contract (extend product screens; keep the review shell):
+  - Product:  .sh-stage contains only end-user product UI. Keep review notes,
+               rationale, instructions, and approval controls in conversation.
+  - Screens:  <section data-screen="slug" data-title="Label"> inside .sh-stage.
+               The selector, arrow keys, and #hash routing build themselves.
+               Use one option per product destination or distinct surface,
+               named by its product role. Keep baselines, variants, comparison
+               labels, steps, indexes, and progress out of names and states.
+               Links may use href="#slug".
+  - States:   "Default" is automatic. A screen declares only representative
+               presets in data-states="Empty,Error". Use natural, screen-specific
+               names. Reserve presets for important multi-step results, forced
+               data or errors, or materially different structure; keep one-click
+               and transient states as interactions. Use data-when="Empty" on
+               preset-only elements. Call prototypeShell.setState("Name") on
+               entry and setState("Default") on exit, including when repeated
+               actions cross a preset condition.
+  - Viewport: "vp (m)" cycles full / 390 / 768. The 390 preset is a
+               fixed-height, internally scrolling phone frame. Start a
+               mobile-first prototype by adding class="sh-vp-390" to <body>
+               (or a bootstrap classList.add before the chrome script runs).
+  - Pinning:  keep in-frame bars (tab bars, CTAs) inside the phone with
+               position: sticky; position: fixed pins to the browser window.
+  - Tokens:   replace the project-tokens block with project tokens copied
+               verbatim. Map differing names to --background, --foreground, and
+               --font afterwards; replace network fonts with a system stack and
+               note that substitution. Without a design system, keep this
+               palette as the finished style. When the project ships dark
+               tokens, copy them under .sh-theme-dark, which the shell sets
+               on both the root element and body, so :root.sh-theme-dark and
+               body.sh-theme-dark work too. A .dark class or a
+               prefers-color-scheme media query copied verbatim would follow
+               the reviewer's system instead of the toggle.
+  - Theme:    the light / dark switch (t) changes the product surface only.
+               It appears only when a .sh-theme-dark rule declares dark tokens,
+               so a prototype without them carries no theme control. Prototypes
+               always load light; the review bar keeps its own dark styling in
+               both themes so it still reads as chrome.
+  - Placeholders: .wf-pic stands in for pictures the prototype has no real
+               files for. Use real text everywhere text belongs.
+
+  - Chrome:   Keep exactly the screen selector, selected-screen state selector,
+               viewport cycle, and theme toggle.
+
+  Self-contained by design: no build, no framework, no network.
+-->
+<meta charset="utf-8">
+<title>Prototype</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* ── project tokens: copied from app/globals.css (Inter → system stack) ── */
+  :root {
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.153 0.006 107.1);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.153 0.006 107.1);
+    --primary: oklch(0.555 0.163 48.998);
+    --primary-foreground: oklch(0.987 0.022 95.277);
+    --secondary: oklch(0.967 0.001 286.375);
+    --secondary-foreground: oklch(0.21 0.006 285.885);
+    --muted: oklch(0.966 0.005 106.5);
+    --muted-foreground: oklch(0.58 0.031 107.3);
+    --accent: oklch(0.966 0.005 106.5);
+    --accent-foreground: oklch(0.228 0.013 107.4);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.93 0.007 106.5);
+    --input: oklch(0.93 0.007 106.5);
+    --ring: oklch(0.737 0.021 106.9);
+    --radius: 0.625rem;
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.153 0.006 107.1);
+    --font: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+  }
+  .sh-theme-dark {
+    --background: oklch(0.153 0.006 107.1);
+    --foreground: oklch(0.988 0.003 106.5);
+    --card: oklch(0.228 0.013 107.4);
+    --card-foreground: oklch(0.988 0.003 106.5);
+    --popover: oklch(0.228 0.013 107.4);
+    --popover-foreground: oklch(0.988 0.003 106.5);
+    --primary: oklch(0.473 0.137 46.201);
+    --primary-foreground: oklch(0.987 0.022 95.277);
+    --secondary: oklch(0.274 0.006 286.033);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.286 0.016 107.4);
+    --muted-foreground: oklch(0.737 0.021 106.9);
+    --accent: oklch(0.286 0.016 107.4);
+    --accent-foreground: oklch(0.988 0.003 106.5);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.58 0.031 107.3);
+  }
+
+  /* ── review chrome (sh-*): keep; extend product styles elsewhere ── */
+  * { box-sizing: border-box }
+  body {
+    margin: 0; padding: 0 0 40px;
+    background: var(--background, #f6f6f6); color: var(--foreground, #3a3a3a);
+    font-family: var(--font, system-ui, sans-serif);
+  }
+  .sh-bar {
+    position: sticky; top: 0; z-index: 999;
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    padding: 8px 12px; background: #191a1c; color: #d7d7d7;
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .sh-bar b, .sh-control-label { color: #8a8f98; font-weight: 500 }
+  .sh-control { display: inline-flex; gap: 5px; align-items: center }
+  .sh-bar button {
+    border: 1px solid #3a3d42; background: none; color: inherit;
+    font: inherit; padding: 2px 9px; border-radius: 99px; cursor: pointer;
+  }
+  .sh-bar select {
+    width: 170px; border: 1px solid #3a3d42; background: #232428; color: inherit;
+    font: inherit; padding: 3px 28px 3px 9px; border-radius: 7px; cursor: pointer;
+    color-scheme: dark;
+  }
+  #sh-screen { width: 190px }
+  .sh-bar button.on { background: #d7d7d7; color: #191a1c; border-color: #d7d7d7 }
+  .sh-theme { display: inline-flex; border: 1px solid #3a3d42; border-radius: 99px; overflow: hidden }
+  .sh-theme button { border: 0; border-radius: 0; padding: 2px 10px }
+  .sh-spacer { flex: 1 }
+  .sh-stage { max-width: 960px; margin: 0 auto; padding: 12px 16px 0 }
+  [hidden] { display: none !important }
+
+  /* viewport presets */
+  .sh-vp-390 .sh-stage {
+    max-width: 390px; background: var(--background, #f6f6f6);
+    border: 10px solid #191a1c; border-radius: 28px;
+    padding: 16px 12px; height: min(844px, calc(100dvh - 52px));
+    overflow-y: auto; margin-top: 12px;
+  }
+  .sh-vp-768 .sh-stage {
+    max-width: 768px; border: 1px solid #c4c4c4; border-radius: 12px;
+    padding: 16px; margin-top: 12px;
+  }
+
+  /* placeholders */
+  .wf-pic  { border-radius: 4px; background:
+             repeating-linear-gradient(45deg, #e9e9e9, #e9e9e9 6px, #f2f2f2 6px, #f2f2f2 12px) }
+  .sh-theme-dark .wf-pic { background: repeating-linear-gradient(45deg,
+             color-mix(in srgb, var(--foreground) 16%, transparent) 0 6px,
+             color-mix(in srgb, var(--foreground) 8%, transparent) 6px 12px) }
+
+  /* ── product ── */
+  .sh-stage { font-size: 14px; line-height: 1.6 }
+  .app-head { display: flex; align-items: center; gap: 12px; padding: 4px 0 12px }
+  .app-head .proj { font-weight: 600; font-size: 15px }
+  .app-head .grow { flex: 1 }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 14px;
+         border-radius: calc(var(--radius) * .8); border: 1px solid transparent; font: inherit; font-weight: 500; cursor: pointer;
+         background: var(--primary); color: var(--primary-foreground); white-space: nowrap }
+  .btn[disabled] { opacity: .5; cursor: not-allowed }
+  .btn.outline { background: var(--background); color: var(--foreground); border-color: var(--border) }
+  .btn.ghost { background: none; color: var(--foreground) }
+  .btn.sm { height: 30px; padding: 0 10px; font-size: 13px }
+  .btn.link { background: none; color: var(--primary); padding: 0; height: auto; text-decoration: underline; text-underline-offset: 3px }
+  .card { background: var(--card); color: var(--card-foreground); border: 1px solid var(--border); border-radius: calc(var(--radius) * 1.4); padding: 20px }
+  .card h2 { margin: 0 0 4px; font-size: 18px }
+  .card .desc { margin: 0 0 16px; color: var(--muted-foreground) }
+  .field { display: grid; gap: 6px; margin-bottom: 14px }
+  .field label { font-weight: 500 }
+  .field .hint { color: var(--muted-foreground); font-size: 13px }
+  .field .err { color: var(--destructive); font-size: 13px }
+  input[type=text], input[type=password], textarea { width: 100%; font: inherit; color: inherit; background: var(--background);
+         border: 1px solid var(--input); border-radius: calc(var(--radius) * .8); padding: 8px 10px }
+  input.invalid { border-color: var(--destructive) }
+  textarea { min-height: 84px; resize: vertical }
+  .alert { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; display: grid; gap: 2px; margin-bottom: 14px }
+  .alert b { font-weight: 600 }
+  .alert.warn { border-color: color-mix(in oklch, var(--primary) 45%, transparent); background: color-mix(in oklch, var(--primary) 8%, var(--background)) }
+  .alert.danger { border-color: color-mix(in oklch, var(--destructive) 45%, transparent); color: var(--destructive) }
+  .alert .row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap }
+  .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; padding: 1px 8px; border-radius: 99px;
+           border: 1px solid var(--border); color: var(--muted-foreground); white-space: nowrap }
+  .badge.primary { background: var(--primary); color: var(--primary-foreground); border-color: transparent }
+  .badge.warn { color: var(--primary); border-color: color-mix(in oklch, var(--primary) 45%, transparent) }
+
+  /* roadmap */
+  .roadmap { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 16px }
+  .step { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; background: var(--card); text-align: left;
+          font: inherit; color: inherit; display: grid; gap: 2px; min-width: 0 }
+  .step .n { font-size: 12px; color: var(--muted-foreground); display: flex; justify-content: space-between; gap: 4px }
+  .step .t { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+  .step.done { cursor: pointer }
+  .step.done:hover { border-color: var(--ring) }
+  .step.current { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary) }
+  .step.current .n { color: var(--primary) }
+  .step.locked { opacity: .55; background: var(--muted) }
+  .step.review { border-style: dashed; border-color: var(--primary) }
+  .next-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin-bottom: 16px; border-radius: var(--radius);
+              background: var(--muted) }
+  .next-bar .grow { flex: 1 }
+  .next-bar .lbl { color: var(--muted-foreground); font-size: 12px }
+
+  /* materials */
+  .mat-group { margin-bottom: 14px }
+  .mat-group h3 { margin: 0 0 6px; font-size: 13px; color: var(--muted-foreground); font-weight: 500 }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px }
+  .chip { font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 99px; border: 1px solid var(--border); background: var(--background);
+          color: inherit; cursor: pointer }
+  .chip[aria-pressed=true] { background: var(--primary); color: var(--primary-foreground); border-color: transparent }
+  .ideas { display: grid; gap: 8px; margin-top: 12px }
+  .idea { text-align: left; font: inherit; color: inherit; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card);
+          padding: 12px 14px; cursor: pointer; display: grid; gap: 2px }
+  .idea b { font-weight: 600 }
+  .idea span { color: var(--muted-foreground); font-size: 13px }
+  .idea[aria-pressed=true] { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary) }
+  .divider { display: flex; align-items: center; gap: 10px; color: var(--muted-foreground); font-size: 13px; margin: 18px 0 }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border) }
+
+  /* work area */
+  .work { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; align-items: start }
+  .sh-vp-768 .work, .sh-vp-390 .work { grid-template-columns: 1fr }
+  .sh-vp-390 .roadmap { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px }
+  .sh-vp-390 .step { padding: 6px }
+  .sh-vp-390 .step .t { font-size: 11px }
+  .sh-vp-390 .step .n span:last-child { display: none }
+  .chat { display: flex; flex-direction: column; gap: 10px; padding: 0; overflow: hidden }
+  .chat .msgs { display: flex; flex-direction: column; gap: 10px; padding: 16px 16px 4px; max-height: 460px; overflow-y: auto }
+  .msg { max-width: 88%; padding: 9px 12px; border-radius: 12px; white-space: pre-line }
+  .msg.agent { background: var(--muted); align-self: flex-start; border-top-left-radius: 4px }
+  .msg.user { background: var(--primary); color: var(--primary-foreground); align-self: flex-end; border-top-right-radius: 4px }
+  .msg .who { display: block; font-size: 12px; color: var(--muted-foreground); margin-bottom: 2px }
+  .typing { align-self: flex-start; color: var(--muted-foreground); font-size: 13px; padding: 4px 12px }
+  .typing i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; margin-right: 3px; animation: blink 1s infinite }
+  .typing i:nth-child(2) { animation-delay: .2s } .typing i:nth-child(3) { animation-delay: .4s }
+  @keyframes blink { 50% { opacity: .2 } }
+  .composer { display: flex; gap: 8px; padding: 12px 16px 16px; border-top: 1px solid var(--border) }
+  .composer input { flex: 1 }
+  .quick { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 16px }
+  .doc { display: grid; gap: 12px }
+  .doc-head { display: flex; align-items: center; gap: 8px }
+  .doc-head h2 { margin: 0; font-size: 16px; flex: 1 }
+  .doc-body { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; background: var(--background); font-size: 13px }
+  .doc-body h4 { margin: 10px 0 2px; font-size: 13px }
+  .doc-body h4:first-child { margin-top: 0 }
+  .doc-body p, .doc-body ul { margin: 0 }
+  .doc-body ul { padding-left: 18px }
+  .doc-body .pending { color: var(--muted-foreground); font-style: italic }
+  .doc-body .fresh { background: color-mix(in oklch, var(--primary) 14%, transparent); border-radius: 3px }
+  .doc-foot { display: flex; gap: 8px; flex-wrap: wrap }
+  .doc-foot .grow { flex: 1 }
+  .done-card { text-align: center; padding: 28px 20px }
+  .done-card h2 { font-size: 18px; margin: 6px 0 }
+  .done-card .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 14px }
+  .narrow { max-width: 520px; margin: 24px auto }
+  .muted { color: var(--muted-foreground) }
+  .toast { position: sticky; bottom: 12px; margin: 12px auto 0; width: fit-content; background: var(--foreground); color: var(--background);
+           padding: 8px 14px; border-radius: var(--radius); font-size: 13px }
+</style>
+
+<header class="sh-bar">
+  <b>proto</b>
+  <label class="sh-control"><span class="sh-control-label">screen</span><select id="sh-screen"></select></label>
+  <span class="sh-spacer"></span>
+  <label class="sh-control"><span class="sh-control-label">state</span><select id="sh-state"></select></label>
+  <button id="sh-vp">vp: full (m)</button>
+  <div class="sh-theme" id="sh-theme" role="group" aria-label="theme (t)" hidden>
+    <button data-theme="light">light</button><button data-theme="dark">dark</button>
+  </div>
+</header>
+
+<main class="sh-stage">
+
+  <!-- 시작: API 키 -->
+  <section data-screen="start" data-title="시작" data-states="키 오류">
+    <div class="narrow">
+      <div class="card" data-component="Card">
+        <h2>만들고 싶은 시스템, 처음부터 같이 정리해요</h2>
+        <p class="desc">아이디어 찾기부터 서비스 방향, 먼저 만들 결과(Spec)까지 순서대로 안내해 드려요. 시작하려면 본인의 Claude API 키가 필요해요.</p>
+        <div class="alert danger" data-component="Alert" data-when="키 오류">
+          <b>키를 확인하지 못했어요</b>
+          <span>입력한 키로 Claude에 연결되지 않았어요. 키를 다시 복사해 붙여 넣거나, 콘솔에서 키가 사용 중인지 확인해 주세요.</span>
+        </div>
+        <div class="field" data-component="Field">
+          <label for="key">Claude API 키</label>
+          <input id="key" type="password" placeholder="sk-ant-로 시작하는 키" data-component="Input">
+          <span class="hint">키는 이 브라우저에만 저장되고, 서비스 서버에는 보관하지 않아요.</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn" data-component="Button" onclick="startWithKey()">시작하기</button>
+          <a class="btn link" href="#start" onclick="return false" data-component="Button">키는 어디서 받나요?</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 1 만들 것 찾기 -->
+  <section data-screen="find" data-title="만들 것 찾기">
+    <div class="app-head"><span class="proj">새 프로젝트</span><span class="grow"></span><button class="btn ghost sm" data-component="Button" onclick="location.hash='start'">API 키 변경</button></div>
+    <div class="roadmap" data-component="new:Roadmap"></div>
+    <div class="next-bar" data-component="new:NextAction"><div class="grow"><div class="lbl">지금 할 일</div>만들고 싶은 것을 한 줄로 적거나, 재료를 골라 아이디어를 받아 보세요.</div></div>
+    <div class="card" data-component="Card">
+      <h2>무엇을 만들고 싶으세요?</h2>
+      <p class="desc">떠오르는 대로 적어도 괜찮아요. 다음 단계에서 같이 다듬어요.</p>
+      <div class="field" data-component="Field">
+        <textarea id="ideaText" placeholder="예) 아침마다 우리 동네 미세먼지가 나쁘면 메신저로 알려주는 서비스" data-component="Textarea"></textarea>
+      </div>
+      <button class="btn" data-component="Button" onclick="goDirection()">이 아이디어로 시작</button>
+
+      <div class="divider">아직 떠오르는 게 없다면</div>
+      <button class="btn outline" id="matToggle" data-component="Button" onclick="toggleMaterials()">쓸 수 있는 재료 보기</button>
+      <div id="materials" hidden style="margin-top:16px">
+        <p class="muted" style="margin:0 0 12px">관심 가는 재료를 두세 개 골라 보세요. 조합해서 만들 수 있는 아이디어를 추천해 드려요.</p>
+        <div class="mat-group"><h3>공개 데이터</h3><div class="chips" data-component="ToggleGroup">
+          <button class="chip" aria-pressed="false">날씨와 미세먼지</button><button class="chip" aria-pressed="false">따릉이 대여소</button><button class="chip" aria-pressed="false">문화행사</button><button class="chip" aria-pressed="false">박스오피스</button><button class="chip" aria-pressed="false">장소 검색</button><button class="chip" aria-pressed="false">뉴스 검색</button><button class="chip" aria-pressed="false">환율</button>
+        </div></div>
+        <div class="mat-group"><h3>AI가 하는 일</h3><div class="chips" data-component="ToggleGroup">
+          <button class="chip" aria-pressed="false">글 요약</button><button class="chip" aria-pressed="false">데이터를 읽고 하는 추천</button><button class="chip" aria-pressed="false">사진 읽기</button>
+        </div></div>
+        <div class="mat-group"><h3>저장과 로그인</h3><div class="chips" data-component="ToggleGroup">
+          <button class="chip" aria-pressed="false">사용자가 남긴 기록</button><button class="chip" aria-pressed="false">사용자마다 다른 화면</button>
+        </div></div>
+        <div class="mat-group"><h3>알림</h3><div class="chips" data-component="ToggleGroup">
+          <button class="chip" aria-pressed="false">메일</button><button class="chip" aria-pressed="false">메신저로 보내는 메시지</button>
+        </div></div>
+        <button class="btn" id="getIdeas" data-component="Button" disabled onclick="showIdeas()">고른 재료로 아이디어 받기</button>
+        <div id="ideaLoading" class="typing" hidden><i></i><i></i><i></i> 아이디어를 만들고 있어요</div>
+        <div class="ideas" id="ideas" hidden>
+          <button class="idea" aria-pressed="false" data-component="new:IdeaOption"><b>아침 미세먼지 알림</b><span>매일 아침 7시, 내 동네 미세먼지가 '나쁨' 이상이면 메신저로 알려줘요.</span></button>
+          <button class="idea" aria-pressed="false" data-component="new:IdeaOption"><b>주말 나들이 날씨 리포트</b><span>금요일 저녁에 주말 날씨·미세먼지를 묶어 메일로 보내줘요.</span></button>
+          <button class="idea" aria-pressed="false" data-component="new:IdeaOption"><b>마스크 챙김 체크</b><span>출근 전 미세먼지와 꽃가루를 한 줄로 알려주고, 챙겼는지 기록해요.</span></button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="pickIdea" disabled data-component="Button" onclick="goDirection(true)">이 아이디어로 시작</button><button class="btn ghost" data-component="Button" onclick="showIdeas()">다른 아이디어 보기</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 서비스 방향 -->
+  <section data-screen="direction" data-title="서비스 방향">
+    <div class="app-head"><span class="proj">아침 미세먼지 알림</span><span class="grow"></span><button class="btn ghost sm" data-component="Button" onclick="location.hash='start'">API 키 변경</button></div>
+    <div class="roadmap" data-component="new:Roadmap"></div>
+    <div class="alert warn" id="editNotice" hidden data-component="Alert"><b>서비스 방향을 고치는 중이에요</b><span>여기서 내용을 바꾸면 '먼저 만들 결과'는 지우지 않고 '다시 확인 필요'로 표시해 둘게요.</span></div>
+    <div class="next-bar" data-component="new:NextAction"><div class="grow"><div class="lbl">지금 할 일</div><span id="dirNext">agent의 질문에 답하면 오른쪽 서비스 방향 문서가 채워져요.</span></div><button class="btn sm" id="dirDone" data-component="Button" onclick="finishDirection()">방향 확정하고 다음으로</button></div>
+    <div class="work">
+      <div class="card chat" data-component="Card">
+        <div class="msgs" id="dirMsgs">
+          <div class="msg agent"><span class="who">agent</span>'아침 미세먼지 알림'으로 시작할게요. 먼저 이 알림을 받는 사람을 떠올려 볼게요. 누가, 어떤 아침에 이 알림을 받으면 좋을까요?</div>
+          <div class="msg user">출근 준비하는 직장인이요. 창문 열지 말지, 마스크 챙길지 고민할 때요.</div>
+          <div class="msg agent"><span class="who">agent</span>좋아요. 그럼 지금은 그 고민을 어떻게 해결하고 있나요? 예를 들어 날씨 앱을 직접 열어 보는지, 그냥 넘어가는지요.</div>
+          <div class="msg user">날씨 앱을 열어야 하는데 바빠서 자주 까먹어요.</div>
+          <div class="msg agent"><span class="who">agent</span>알림을 받은 뒤에는 무엇이 달라져 있으면 좋을까요?</div>
+        </div>
+        <div class="quick" data-component="new:QuickReplies"><button class="chip">잘 모르겠어요, 예시를 보여주세요</button><button class="chip">이 질문은 나중에</button></div>
+        <div class="composer"><input type="text" id="dirInput" placeholder="답을 적어 주세요" data-component="Input" onkeydown="if(event.key==='Enter')send('dir')"><button class="btn" data-component="Button" onclick="send('dir')">보내기</button></div>
+      </div>
+      <div class="card doc" data-component="Card">
+        <div class="doc-head"><h2>서비스 방향</h2><span class="badge" id="dirBadge">작성 중</span></div>
+        <div class="doc-body" data-component="new:DocPreview">
+          <h4>한 줄 정의</h4><p>출근 준비하는 직장인에게 아침 미세먼지가 나쁠 때만 메신저로 알려주는 서비스</p>
+          <h4>사용자와 상황</h4><p>출근 준비 중, 창문을 열지·마스크를 챙길지 고민하는 직장인</p>
+          <h4>문제와 지금의 대안</h4><p>날씨 앱을 직접 열어야 하는데 바빠서 자주 까먹음</p>
+          <h4>약속하는 변화</h4><p class="pending" id="dirChange">대화로 채워지는 중…</p>
+          <h4>핵심 루프</h4><p class="pending">대화로 채워지는 중…</p>
+        </div>
+        <div class="doc-foot"><button class="btn outline sm" data-component="Button" onclick="toast('서비스방향.md 를 내려받았어요')">.md 내려받기</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 첫 Spec -->
+  <section data-screen="spec" data-title="첫 Spec" data-states="다시 확인 필요,완료">
+    <div class="app-head"><span class="proj">아침 미세먼지 알림</span><span class="grow"></span><button class="btn ghost sm" data-component="Button" onclick="location.hash='start'">API 키 변경</button></div>
+    <div class="roadmap" data-component="new:Roadmap"></div>
+
+    <div class="alert warn" data-when="다시 확인 필요" data-component="Alert">
+      <b>서비스 방향이 바뀌어서 이 Spec을 다시 확인해야 해요</b>
+      <span>바뀐 부분: 알림 시간 '매일 7시' → '사용자가 고른 시간'. 기존 Spec은 그대로 남아 있어요.</span>
+      <div class="row"><button class="btn sm" data-component="Button" onclick="applyReview()">바뀐 부분 반영하기</button><button class="btn outline sm" data-component="Button" onclick="keepSpec()">그대로 둘게요</button></div>
+    </div>
+
+    <div data-when="Default,다시 확인 필요">
+      <div class="next-bar" data-component="new:NextAction"><div class="grow"><div class="lbl">지금 할 일</div>처음 완성할 결과 하나를 agent와 정해요. 한 번에 만들고 직접 써 볼 수 있는 크기예요.</div><button class="btn sm" data-component="Button" onclick="finishSpec()">Spec 확정하기</button></div>
+      <div class="work">
+        <div class="card chat" data-component="Card">
+          <div class="msgs" id="specMsgs">
+            <div class="msg agent"><span class="who">agent</span>서비스 방향을 보고 가장 먼저 완성할 결과를 제안해 볼게요.
+
+"동네를 한 번 등록하면, 다음 날 아침 7시에 미세먼지가 '나쁨' 이상일 때 메신저로 알림 한 통을 받는다."
+
+이 정도면 한 번에 만들고 직접 받아 볼 수 있어요. 이대로 갈까요, 아니면 바꾸고 싶은 부분이 있나요?</div>
+            <div class="msg user">좋아요. 그런데 '보통'일 때도 알려주면 좋겠어요.</div>
+            <div class="msg agent"><span class="who">agent</span>알겠어요. 기준을 '보통 이상'으로 바꿀게요. 그럼 매일 알림이 올 수도 있는데, 그래도 괜찮을까요?</div>
+          </div>
+          <div class="quick"><button class="chip">괜찮아요</button><button class="chip">'나쁨'만으로 할게요</button></div>
+          <div class="composer"><input type="text" id="specInput" placeholder="답을 적어 주세요" data-component="Input" onkeydown="if(event.key==='Enter')send('spec')"><button class="btn" data-component="Button" onclick="send('spec')">보내기</button></div>
+        </div>
+        <div class="card doc" data-component="Card">
+          <div class="doc-head"><h2>첫 Spec · 아침 알림 한 통</h2><span class="badge" data-when="Default">작성 중</span><span class="badge warn" data-when="다시 확인 필요">다시 확인 필요</span></div>
+          <div class="doc-body" data-component="new:DocPreview">
+            <h4>사용자가 얻는 결과</h4><p>동네를 등록하면 다음 날 아침 알림 한 통을 메신저로 받는다</p>
+            <h4>범위</h4><ul><li>동네 한 곳 등록</li><li>매일 아침 7시 확인</li><li>기준 이상이면 메신저 알림</li></ul>
+            <h4>확인 방법</h4><ul><li>등록 다음 날 7시에 알림이 오는지</li><li>기준 미만인 날엔 오지 않는지</li></ul>
+            <h4>이번엔 하지 않는 것</h4><p>여러 동네, 메일 알림, 꽃가루 정보</p>
+          </div>
+          <div class="doc-foot"><button class="btn outline sm" data-component="Button" onclick="toast('첫Spec.md 를 내려받았어요')">.md 내려받기</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div data-when="완료">
+      <div class="card done-card" data-component="Card">
+        <span class="badge primary">1~3단계 완료</span>
+        <h2>'아침 알림 한 통' Spec이 준비됐어요</h2>
+        <p class="muted" style="margin:0">서비스 방향과 첫 Spec을 내려받아 두세요. 4단계 구현과 5단계 배포는 다음 업데이트에서 열려요.</p>
+        <div class="row">
+          <button class="btn" data-component="Button" onclick="toast('서비스방향.md 를 내려받았어요')">서비스 방향 .md</button>
+          <button class="btn" data-component="Button" onclick="toast('첫Spec.md 를 내려받았어요')">첫 Spec .md</button>
+          <button class="btn outline" data-component="Button" onclick="editStep(2)">서비스 방향 다시 고치기</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="toast" id="toast" hidden></div>
+</main>
+
+<script>
+  const STEPS = [
+    { n: 1, t: '만들 것 찾기', slug: 'find' },
+    { n: 2, t: '서비스 방향', slug: 'direction' },
+    { n: 3, t: '먼저 만들 결과', slug: 'spec' },
+    { n: 4, t: '구현', slug: null },
+    { n: 5, t: '배포', slug: null },
+  ];
+  const app = { done: new Set(), review: new Set(), editing: null };
+
+  function currentStepFor(screen) {
+    return { find: 1, direction: 2, spec: 3 }[screen] || 0;
+  }
+  function renderRoadmaps() {
+    document.querySelectorAll('.roadmap').forEach(rm => {
+      const screen = rm.closest('[data-screen]').dataset.screen;
+      const cur = currentStepFor(screen);
+      rm.innerHTML = '';
+      STEPS.forEach(s => {
+        const b = document.createElement('button');
+        const locked = !s.slug;
+        const isCur = s.n === cur;
+        const isDone = app.done.has(s.n) && !isCur;
+        const isReview = app.review.has(s.n);
+        b.className = 'step' + (locked ? ' locked' : '') + (isCur ? ' current' : '') + (isDone ? ' done' : '') + (isReview ? ' review' : '');
+        let tag = locked ? '잠김' : isReview ? '다시 확인' : app.done.has(s.n) ? '완료 ✓' : isCur ? '지금' : '';
+        b.innerHTML = `<span class="n"><span>${s.n}단계</span><span>${tag}</span></span><span class="t">${s.t}</span>`;
+        b.title = locked ? '다음 업데이트에서 열려요' : isDone ? '눌러서 다시 고치기' : '';
+        if (isDone || (isReview && !isCur)) b.onclick = () => editStep(s.n);
+        else b.disabled = !isCur;
+        rm.append(b);
+      });
+    });
+  }
+  function editStep(n) {
+    if (n === 2 && app.done.has(3)) app.editing = 2;
+    location.hash = STEPS[n - 1].slug;
+  }
+
+  function startWithKey() {
+    const v = document.getElementById('key').value.trim();
+    const input = document.getElementById('key');
+    if (!v.startsWith('sk-ant-')) { input.classList.add('invalid'); prototypeShell.setState('키 오류'); return; }
+    input.classList.remove('invalid'); prototypeShell.setState('Default');
+    location.hash = 'find';
+  }
+
+  function toggleMaterials() {
+    const m = document.getElementById('materials');
+    m.hidden = !m.hidden;
+    document.getElementById('matToggle').textContent = m.hidden ? '쓸 수 있는 재료 보기' : '재료 접기';
+  }
+  document.querySelectorAll('#materials .chip').forEach(c => c.onclick = () => {
+    c.setAttribute('aria-pressed', c.getAttribute('aria-pressed') !== 'true');
+    document.getElementById('getIdeas').disabled = !document.querySelector('#materials .chip[aria-pressed=true]');
+  });
+  function showIdeas() {
+    const ideas = document.getElementById('ideas'), ld = document.getElementById('ideaLoading');
+    ideas.hidden = true; ld.hidden = false;
+    setTimeout(() => { ld.hidden = true; ideas.hidden = false; }, 900);
+  }
+  document.querySelectorAll('.idea').forEach(i => i.onclick = () => {
+    document.querySelectorAll('.idea').forEach(x => x.setAttribute('aria-pressed', x === i));
+    document.getElementById('pickIdea').disabled = false;
+  });
+  function goDirection(fromIdea) {
+    if (!fromIdea && !document.getElementById('ideaText').value.trim()) {
+      document.getElementById('ideaText').focus();
+      toast('만들고 싶은 것을 한 줄로 적어 주세요');
+      return;
+    }
+    app.done.add(1);
+    location.hash = 'direction';
+  }
+
+  const REPLIES = {
+    dir: { text: '좋아요, "창문·마스크를 고민하지 않고 바로 출근 준비를 이어간다"로 정리할게요. 이제 이 알림이 매일 어떤 순서로 오가는지(핵심 루프)를 정하면 방향이 완성돼요.', after: () => {
+      const c = document.getElementById('dirChange'); c.className = 'fresh'; c.textContent = '알림 하나로 창문·마스크 고민 없이 출근 준비를 이어간다';
+      if (app.editing === 2 && app.done.has(3)) { app.review.add(3); renderRoadmaps(); toast("'먼저 만들 결과'를 다시 확인 필요로 표시했어요"); }
+    } },
+    spec: { text: '알겠어요. 오른쪽 Spec에 반영했어요. 확인 방법까지 괜찮다면 "Spec 확정하기"를 눌러 주세요.', after: () => {} },
+  };
+  function send(kind) {
+    const input = document.getElementById(kind + 'Input');
+    const msgs = document.getElementById(kind + 'Msgs');
+    const v = input.value.trim(); if (!v) { input.focus(); return; }
+    input.value = '';
+    msgs.insertAdjacentHTML('beforeend', `<div class="msg user"></div>`);
+    msgs.lastElementChild.textContent = v;
+    msgs.insertAdjacentHTML('beforeend', `<div class="typing"><i></i><i></i><i></i> agent가 정리하고 있어요</div>`);
+    msgs.scrollTop = msgs.scrollHeight;
+    setTimeout(() => {
+      msgs.querySelector('.typing').remove();
+      msgs.insertAdjacentHTML('beforeend', `<div class="msg agent"><span class="who">agent</span>${REPLIES[kind].text}</div>`);
+      msgs.scrollTop = msgs.scrollHeight;
+      REPLIES[kind].after();
+    }, 1100);
+  }
+  document.querySelectorAll('.quick .chip').forEach(c => c.onclick = () => {
+    const sec = c.closest('[data-screen]').dataset.screen === 'direction' ? 'dir' : 'spec';
+    document.getElementById(sec + 'Input').value = c.textContent; send(sec);
+  });
+
+  function finishDirection() {
+    app.done.add(2);
+    const wasEditing = app.editing === 2; app.editing = null;
+    location.hash = 'spec';
+    if (wasEditing && app.review.has(3)) setTimeout(() => prototypeShell.setState('다시 확인 필요'), 60);
+  }
+  function finishSpec() { app.done.add(3); app.review.delete(3); renderRoadmaps(); prototypeShell.setState('완료'); }
+  function applyReview() { app.review.delete(3); renderRoadmaps(); prototypeShell.setState('Default'); toast('바뀐 방향을 Spec에 반영했어요'); }
+  function keepSpec() { app.review.delete(3); renderRoadmaps(); prototypeShell.setState('Default'); }
+
+  let tt;
+  function toast(t) { const el = document.getElementById('toast'); el.textContent = t; el.hidden = false; clearTimeout(tt); tt = setTimeout(() => el.hidden = true, 2200); }
+</script>
+
+<script>
+  const stage = document.querySelector('.sh-stage');
+  const screens = [...stage.querySelectorAll('[data-screen]')];
+  const screenSelect = document.getElementById('sh-screen');
+  const stateSelect = document.getElementById('sh-state');
+  const vpBtn = document.getElementById('sh-vp');
+  const themeCtl = document.getElementById('sh-theme');
+  const themeBtns = [...themeCtl.querySelectorAll('button')];
+  let current = null;
+  let currentStates = [];
+
+  screens.forEach(s => {
+    const option = document.createElement('option');
+    option.textContent = s.dataset.title || s.dataset.screen;
+    option.value = s.dataset.screen;
+    screenSelect.append(option);
+  });
+  screenSelect.onchange = () => show(screenSelect.value);
+
+  function show(slug) {
+    current = screens.find(s => s.dataset.screen === slug) || screens[0];
+    screens.forEach(s => s.hidden = s !== current);
+    screenSelect.value = current.dataset.screen;
+    history.replaceState(null, '', '#' + current.dataset.screen);
+    buildStates();
+    onScreen(current.dataset.screen);
+  }
+
+  function buildStates() {
+    const declared = (current.dataset.states || '').split(',').map(x => x.trim()).filter(Boolean);
+    currentStates = ['Default', ...declared.filter(name => name !== 'Default')];
+    stateSelect.innerHTML = '';
+    currentStates.forEach(name => {
+      const option = document.createElement('option');
+      option.textContent = name;
+      option.value = name;
+      stateSelect.append(option);
+    });
+    applyState('Default');
+  }
+
+  function applyState(name) {
+    const active = currentStates.includes(name) ? name : 'Default';
+    current.querySelectorAll('[data-when]').forEach(el => {
+      el.hidden = !el.dataset.when.split(',').map(x => x.trim()).includes(active);
+    });
+    stateSelect.value = active;
+    onState(current.dataset.screen, active);
+  }
+  stateSelect.onchange = () => applyState(stateSelect.value);
+
+  window.prototypeShell = {
+    showScreen: show,
+    setState: applyState,
+    getScreen: () => current?.dataset.screen,
+    getState: () => stateSelect.value
+  };
+
+  /* keep product model in sync with selector presets */
+  function onScreen(slug) {
+    if (slug === 'direction') { app.done.add(1); document.getElementById('editNotice').hidden = app.editing !== 2; }
+    if (slug === 'spec') { app.done.add(1); app.done.add(2); }
+    renderRoadmaps();
+  }
+  function onState(slug, st) {
+    if (slug !== 'spec') return;
+    if (st === '다시 확인 필요') { app.done.add(3); app.review.add(3); }
+    if (st === '완료') { app.done.add(3); app.review.delete(3); }
+    if (st === 'Default') { app.review.delete(3); }
+    renderRoadmaps();
+  }
+
+  const VPS = ['full', '390', '768'];
+  let vp = VPS.find(v => document.body.classList.contains('sh-vp-' + v)) || 'full';
+  function applyVp() {
+    VPS.forEach(v => document.body.classList.toggle('sh-vp-' + v, v === vp && v !== 'full'));
+    vpBtn.textContent = 'vp: ' + vp + ' (m)';
+    vpBtn.classList.toggle('on', vp !== 'full');
+  }
+  vpBtn.onclick = () => { vp = VPS[(VPS.indexOf(vp) + 1) % VPS.length]; applyVp(); };
+  applyVp();
+
+  const hasDark = [...document.styleSheets].some(sheet => {
+    try {
+      return [...sheet.cssRules].some(rule => (rule.selectorText || '')
+        .split(',').some(part => /\.sh-theme-dark$/.test(part.trim())));
+    } catch { return false }
+  });
+  let dark = false;
+  function applyTheme() {
+    document.documentElement.classList.toggle('sh-theme-dark', dark);
+    document.body.classList.toggle('sh-theme-dark', dark);
+    themeBtns.forEach(b => b.classList.toggle('on', (b.dataset.theme === 'dark') === dark));
+  }
+  themeCtl.hidden = !hasDark;
+  themeBtns.forEach(b => b.onclick = () => { dark = b.dataset.theme === 'dark'; applyTheme(); });
+  applyTheme();
+
+  addEventListener('keydown', e => {
+    if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    const i = screens.indexOf(current);
+    if (e.key === 'ArrowRight') show(screens[(i + 1) % screens.length].dataset.screen);
+    if (e.key === 'ArrowLeft') show(screens[(i - 1 + screens.length) % screens.length].dataset.screen);
+    if (e.key === 'm') vpBtn.click();
+    if (e.key === 't' && !themeCtl.hidden) { dark = !dark; applyTheme(); }
+  });
+
+  addEventListener('hashchange', () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
+</script>
