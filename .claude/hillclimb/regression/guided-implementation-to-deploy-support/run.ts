@@ -1,7 +1,7 @@
 // 4·5단계 agent 구현 품질 eval 실행기. 사용법:
 //   bun run run.ts --mode support|build --variant baseline --split train|test|all --reps 2 [--concurrency 4]
 // 앱의 실제 진입점(handleDeliveryRequest)을 호출한다. 판정은 코드로만 한다(지원 범위는 사례의 label과 비교, 빌드는 next build 종료 코드).
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -60,7 +60,8 @@ async function ensureBase() {
 }
 
 async function nextBuild(dir: string): Promise<{ ok: boolean; log: string }> {
-  const bin = join(dir, "node_modules", "next", "dist", "bin", "next");
+  // 작업 폴더는 기본 폴더 안에 있어서, 심볼릭 링크 없이 위쪽 node_modules를 찾는다(Turbopack은 작업 영역 밖 링크를 컴파일하지 않는다).
+  const bin = join(BASE, "node_modules", "next", "dist", "bin", "next");
   const proc = Bun.spawn(["node", bin, "build"], { cwd: dir, stdout: "pipe", stderr: "pipe", env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" } });
   const timer = setTimeout(() => proc.kill(), 300_000);
   const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
@@ -83,8 +84,7 @@ function writeProject(dir: string, files: Record<string, string>) {
 
 async function buildTrial(c: Case, rep: number) {
   await ensureBase();
-  const dir = mkdtempSync(join(SCRATCH, `w-${c.id}-${rep}-`));
-  symlinkSync(join(BASE, "node_modules"), join(dir, "node_modules"), "junction");
+  const dir = mkdtempSync(join(BASE, `w-${c.id}-${rep}-`));
   try {
     const gen = await handleDeliveryRequest({ kind: "generate", connection, spec: c.spec, direction: c.direction, repoName: "eval-app" }, {}, fetch);
     if (!gen.ok) throw new Error(`api: ${gen.message}`);

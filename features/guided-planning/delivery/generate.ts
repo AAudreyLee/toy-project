@@ -149,7 +149,7 @@ export async function judgeSupport(
 }
 
 const CODE_RULES = `규칙:
-- 사용할 수 있는 파일은 app/page.tsx(꼭 필요)와 components/이름.tsx뿐입니다. 그 밖의 파일은 이미 준비되어 있습니다.
+- 사용할 수 있는 파일은 app/page.tsx(꼭 필요)와 components/이름.tsx뿐입니다. 파일 이름은 영문 알파벳과 숫자만 쓰는 PascalCase(예: TodoItem.tsx)로 하고, 한글 파일 이름은 쓰지 않습니다. 그 밖의 파일은 이미 준비되어 있습니다.
 - 파일 맨 위에 "use client";를 쓰고, React 상태(useState 등)만으로 한 화면에서 동작하게 만듭니다.
 - react와 next, 프로젝트 안의 파일만 가져옵니다. 다른 패키지는 설치되어 있지 않습니다.
 - 새로고침 뒤에도 남겨야 하는 값은 localStorage에 저장합니다. 단 서버 렌더링 중에는 window가 없으므로 useEffect 안에서만 읽고 씁니다.
