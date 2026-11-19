@@ -7,8 +7,17 @@ import Home from "@/app/page";
 beforeEach(() => localStorage.clear());
 afterEach(() => vi.unstubAllGlobals());
 
-test("연결 정보가 없으면 시작 화면에 키, 엔드포인트, 배포 이름 입력란이 보인다", async () => {
+// 2026-11-19 사용자 결정: 서비스를 쓰는 사람이 한 명뿐이라 서버의 .env.local 키를 쓰고 시작 화면의 키 입력은 생략한다.
+test("연결 정보가 저장되어 있지 않아도 키 입력 화면 없이 바로 만들 것 찾기 화면이 보인다", async () => {
   render(<Home />);
+  expect(await screen.findByText("무엇을 만들고 싶으세요?")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Azure OpenAI API 키")).not.toBeInTheDocument();
+});
+
+test("API 키 변경을 누르면 키, 엔드포인트, 배포 이름 입력란이 보인다", async () => {
+  const user = userEvent.setup();
+  render(<Home />);
+  await user.click(await screen.findByRole("button", { name: "API 키 변경" }));
   expect(await screen.findByLabelText("Azure OpenAI API 키")).toBeInTheDocument();
   expect(screen.getByLabelText("엔드포인트 주소")).toBeInTheDocument();
   expect(screen.getByLabelText("배포 이름")).toBeInTheDocument();
@@ -19,6 +28,7 @@ test("입력란이 비어 있으면 키를 확인하지 못했다고 알리고 �
   vi.stubGlobal("fetch", fetchMock);
   const user = userEvent.setup();
   render(<Home />);
+  await user.click(await screen.findByRole("button", { name: "API 키 변경" }));
   await user.click(await screen.findByRole("button", { name: "시작하기" }));
   expect(screen.getByText("키를 확인하지 못했어요")).toBeInTheDocument();
   expect(fetchMock).not.toHaveBeenCalled();
@@ -33,6 +43,7 @@ test("키 확인이 실패하면 키를 확인하지 못했다고 알리고, 성
   vi.stubGlobal("fetch", fetchMock);
   const user = userEvent.setup();
   render(<Home />);
+  await user.click(await screen.findByRole("button", { name: "API 키 변경" }));
   await user.type(await screen.findByLabelText("Azure OpenAI API 키"), "k");
   await user.type(screen.getByLabelText("엔드포인트 주소"), "https://a.openai.azure.com");
   await user.type(screen.getByLabelText("배포 이름"), "d");

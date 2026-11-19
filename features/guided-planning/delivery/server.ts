@@ -1,3 +1,4 @@
+import { resolveConnection } from "../connection";
 import type { Connection, DirectionDoc, SpecDoc } from "../types";
 import { DeliveryError } from "./errors";
 import { generateFiles, fixFiles, judgeSupport } from "./generate";
@@ -16,7 +17,7 @@ function str(v: unknown): string {
 
 function asConnection(v: unknown): Connection {
   const c = (v ?? {}) as Record<string, unknown>;
-  return { apiKey: str(c.apiKey), endpoint: str(c.endpoint), deployment: str(c.deployment) };
+  return resolveConnection({ apiKey: str(c.apiKey), endpoint: str(c.endpoint), deployment: str(c.deployment) });
 }
 
 function asSpec(v: unknown): SpecDoc {

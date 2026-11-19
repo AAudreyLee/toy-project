@@ -64,7 +64,8 @@ export function GuidedPlanning() {
     // 브라우저 저장소는 서버 렌더에 없으므로 마운트 뒤에 한 번 읽는다.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setProgress(loadProgress(localStorage));
-    setConn(loadConnection(localStorage));
+    // 서버에 연결 정보가 있으면 서버가 그것을 쓰므로 시작 화면 없이 바로 시작한다. 없으면 호출이 키 오류로 알려 주고 "API 키 변경"으로 입력할 수 있다.
+    setConn(loadConnection(localStorage) ?? { apiKey: "", endpoint: "", deployment: "" });
     setVercel(loadVercelToken(localStorage));
     // GitHub 승인 화면에서 돌아오면 결과를 한 번 알리고 주소의 표시를 지운다.
     const flash = new URLSearchParams(window.location.search).get("github");
