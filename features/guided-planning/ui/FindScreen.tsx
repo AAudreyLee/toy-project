@@ -65,7 +65,7 @@ export function FindScreen({
       <CardContent className="flex flex-col gap-4">
         <Textarea
           aria-label="만들고 싶은 것"
-          placeholder="예) 아침마다 우리 동네 미세먼지가 나쁘면 메신저로 알려주는 서비스"
+          placeholder="예) 우리 동네 오늘 미세먼지를 한눈에 보여주는 서비스"
           value={text}
           onChange={(e) => {
             setText(e.target.value);

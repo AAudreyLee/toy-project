@@ -98,6 +98,7 @@ async function runTrial(c: Case, rep: number) {
   const s = await judgeSpec(p.spec.doc);
   checks.spec = s;
   grade.spec_ok = s.filled && s.single_result && s.right_size ? 1 : 0;
+  grade.spec_hold = s.hold.length ? 1 : 0;
   steps.push({ finalSpec: p.spec.doc, judge: s });
   return { grade, checks, trace };
 }
@@ -136,7 +137,8 @@ const ideas = sum((r) => r.grade.ideas_ok);
 const qOk = sum((r) => r.grade.q_ok).reduce((a, b) => a + b, 0);
 const qTotal = sum((r) => r.grade.q_total).reduce((a, b) => a + b, 0);
 const spec = sum((r) => r.grade.spec_ok);
+const hold = sum((r) => r.grade.spec_hold);
 const pct = (a: number, b: number) => (b ? `${a}/${b} (${((a / b) * 100).toFixed(0)}%)` : "-");
-console.log(`\n[${variant}/${split}] 아이디어 추천 통과 ${pct(ideas.reduce((a, b) => a + b, 0), ideas.length)}  |  한 번에 하나씩 묻기 ${pct(qOk, qTotal)}  |  첫 Spec 크기 ${pct(spec.reduce((a, b) => a + b, 0), spec.length)}`);
+console.log(`\n[${variant}/${split}] 아이디어 추천 통과 ${pct(ideas.reduce((a, b) => a + b, 0), ideas.length)}  |  한 번에 하나씩 묻기 ${pct(qOk, qTotal)}  |  첫 Spec 크기 ${pct(spec.reduce((a, b) => a + b, 0), spec.length)}  |  보류 항목 있는 Spec(별도 집계) ${pct(hold.reduce((a, b) => a + b, 0), hold.length)}`);
 const errs = existsSync(errorsPath) ? readFileSync(errorsPath, "utf8").trim().split("\n").filter(Boolean).length : 0;
 if (errs) console.log(`오류 기록 ${errs}건 (errors.jsonl)`);

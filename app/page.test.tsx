@@ -77,7 +77,7 @@ test("재료를 하나도 고르지 않으면 아이디어 받기를 누를 수 
   const user = userEvent.setup();
   render(<Home />);
   await user.click(await screen.findByRole("button", { name: "쓸 수 있는 재료 보기" }));
-  for (const group of ["공개 데이터", "AI가 하는 일", "저장과 로그인", "알림"]) {
+  for (const group of ["공개 데이터", "AI가 하는 일", "저장과 로그인"]) {
     expect(screen.getByRole("heading", { name: group })).toBeInTheDocument();
   }
   const get = screen.getByRole("button", { name: "고른 재료로 아이디어 받기" });

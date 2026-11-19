@@ -74,12 +74,12 @@ describe("아이디어 추천", () => {
 
   it("고른 재료를 프롬프트에 담아 제목과 한 줄 설명이 있는 아이디어 3개를 돌려준다", async () => {
     const f = azure(ideasJson);
-    const res = await handleAgentRequest({ kind: "ideas", connection, materials: ["날씨와 미세먼지", "메신저로 보내는 메시지"] }, f);
+    const res = await handleAgentRequest({ kind: "ideas", connection, materials: ["날씨와 미세먼지", "환율"] }, f);
     expect(res).toMatchObject({ ok: true, kind: "ideas" });
     if (res.ok && res.kind === "ideas") expect(res.ideas).toHaveLength(3);
     const text = sentBody(f).messages.map((m) => m.content).join("\n");
     expect(text).toContain("날씨와 미세먼지");
-    expect(text).toContain("메신저로 보내는 메시지");
+    expect(text).toContain("환율");
   });
 
   it("다시 받을 때는 이미 나온 아이디어 제목을 피하도록 요청한다", async () => {
@@ -98,15 +98,25 @@ describe("아이디어 추천", () => {
 
   it("고르지 않은 재료가 있어야 하는 아이디어가 나오면 이유를 알려 주고 다시 요청해, 고쳐진 3개를 돌려준다", async () => {
     const bad = { ideas: [idea("A", "날씨를 보여줘요."), idea("B", "메일로 보내줘요."), idea("C", "취향에 맞게 추천해요.")] };
-    const good = { ideas: [idea("A", "날씨를 보여줘요."), idea("B", "메신저로 알려줘요."), idea("C", "미세먼지를 보여줘요.")] };
+    const good = { ideas: [idea("A", "날씨를 보여줘요."), idea("B", "환율을 보여줘요."), idea("C", "미세먼지를 보여줘요.")] };
     const f = sequence(bad, good);
-    const res = await handleAgentRequest({ kind: "ideas", connection, materials: ["날씨와 미세먼지", "메신저로 보내는 메시지"] }, f);
+    const res = await handleAgentRequest({ kind: "ideas", connection, materials: ["날씨와 미세먼지", "환율"] }, f);
     expect(f).toHaveBeenCalledTimes(2);
     expect(res).toMatchObject({ ok: true, kind: "ideas" });
     if (res.ok && res.kind === "ideas") expect(res.ideas.map((i) => i.title)).toEqual(["A", "B", "C"]);
     const retryText = JSON.parse(String((f.mock.calls[1] as unknown as [string, RequestInit])[1].body)).messages.map((m: { content: string }) => m.content).join("\n");
     expect(retryText).toContain("메일");
     expect(retryText).toContain("추천");
+  });
+
+  it("알림 기능은 없어서, 알림이나 메일로 보내는 아이디어가 나오면 화면에서 보는 서비스로 바꿔 달라고 다시 요청한다", async () => {
+    const bad = { ideas: [idea("A", "미세먼지가 나쁘면 알려줘요."), idea("B", "환율을 보여줘요."), idea("C", "날씨를 보여줘요.")] };
+    const good = { ideas: [idea("A", "미세먼지를 보여줘요."), idea("B", "환율을 보여줘요."), idea("C", "날씨를 보여줘요.")] };
+    const f = sequence(bad, good);
+    await handleAgentRequest({ kind: "ideas", connection, materials: ["날씨와 미세먼지", "환율"] }, f);
+    expect(f).toHaveBeenCalledTimes(2);
+    const retryText = JSON.parse(String((f.mock.calls[1] as unknown as [string, RequestInit])[1].body)).messages.map((m: { content: string }) => m.content).join("\n");
+    expect(retryText).toContain("알림");
   });
 
   it("두 번 고쳐 달라고 해도 어긋나면 사용자를 막지 않고 마지막 결과를 돌려준다", async () => {
@@ -271,15 +281,6 @@ describe("대화", () => {
         await handleAgentRequest(specBase, f);
         expect(f).toHaveBeenCalledTimes(2);
       }
-    });
-
-    it("외부 상황이 바뀌기를 기다려야 하는 확인 방법은 설정 직후 해 볼 수 있는 확인으로 바꿔 달라고 다시 받는다", async () => {
-      const wait = replyOf({ ...good, verification: ["환율 값을 설정하고 환율이 그 값 아래로 떨어지면 알림이 오는지 본다"] });
-      const f = seq(wait, replyOf(good));
-      await handleAgentRequest(specBase, f);
-      expect(f).toHaveBeenCalledTimes(2);
-      const retry = JSON.parse(String((f.mock.calls[1] as unknown as [string, RequestInit])[1].body)).messages.at(-1).content as string;
-      expect(retry).toContain("시험");
     });
 
     it("결과에 서로 다른 일이 이어 붙어 있으면(하고, 그리고, 및) 하나로 줄여 다시 받는다", async () => {

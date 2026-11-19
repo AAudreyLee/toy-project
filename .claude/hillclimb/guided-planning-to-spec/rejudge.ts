@@ -42,6 +42,7 @@ async function worker() {
       const s = await judgeSpec(finalSpec);
       checks.spec = s;
       grade.spec_ok = s.filled && s.single_result && s.right_size ? 1 : 0;
+      grade.spec_hold = s.hold.length ? 1 : 0;
       writeFileSync(outPath, "", { flag: "a" });
       writeFileSync(outPath, JSON.stringify({ prompt_id: r.prompt_id, rep: r.rep, tags: r.tags, split: r.split, grade, checks, status: "ok", model: r.model, usage: null }) + "\n", { flag: "a" });
     } catch (e) {
@@ -54,6 +55,6 @@ await Promise.all(Array.from({ length: 4 }, worker));
 
 const rows = readFileSync(outPath, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
 const sum = (k: string) => rows.map((r) => r.grade[k]).filter((v): v is number => v !== undefined);
-const ideas = sum("ideas_ok"), spec = sum("spec_ok");
+const ideas = sum("ideas_ok"), spec = sum("spec_ok"), hold = sum("spec_hold");
 const t = (a: number[]) => `${a.reduce((x, y) => x + y, 0)}/${a.length} (${((a.reduce((x, y) => x + y, 0) / a.length) * 100).toFixed(0)}%)`;
-console.log(`[${from}-rejudge/${split}] 아이디어 추천 ${t(ideas)} | 첫 Spec 크기 ${t(spec)}`);
+console.log(`[${from}-rejudge/${split}] 아이디어 추천 ${t(ideas)} | 첫 Spec 크기 ${t(spec)} | 보류 항목 있는 Spec(별도 집계) ${t(hold)}`);
