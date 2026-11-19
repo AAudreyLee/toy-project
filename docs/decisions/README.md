@@ -5,5 +5,5 @@
 - [ui-composition](ui-composition.md) — Read when choosing UI components, page composition, visual tokens, or custom interface boundaries.
 - [deployment-ownership](deployment-ownership.md) — Read when deciding where user-built systems are stored, deployed, or whose accounts the agent acts on.
 - [llm-usage-billing](llm-usage-billing.md) — Read when deciding who pays for or supplies the LLM API key (currently Azure OpenAI) the agent uses.
-- [credential-storage](credential-storage.md) — Read when deciding where the user's connected credentials (LLM API key, GitHub and Vercel OAuth tokens) are kept or whether the server may store them.
+- [credential-storage](credential-storage.md) — Read when deciding where the user's connected credentials (LLM API key, GitHub OAuth access, Vercel token) are kept or whether the server may store them.
 - [dependency-versions](dependency-versions.md) — Read when upgrading dependencies, pinning versions, or wondering why TypeScript stays on 6.x.
