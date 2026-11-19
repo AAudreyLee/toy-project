@@ -3,7 +3,7 @@ import type { SpecDoc } from "./types";
 const TASK_WORDS = /수집|디자인|알고리즘|연동|정보 입력|사용자 정보|로그인|계정|프로필|구현|개발|서버|데이터베이스|API|인터페이스/;
 const VAGUE_CHECK = /정확|올바른|제대로|잘 (?:되|됐|된|동작|작동|나오|보이)|비교|일치|문제 없|성능/;
 const MAX_SCOPE = 4;
-const MAX_VERIFICATION = 2;
+const MAX_VERIFICATION = 1;
 // 확인 방법은 사용자가 화면이나 받은 알림에서 눈으로 확인할 것이 적혀 있어야 한다.
 const OBSERVABLE = /화면|알림|메신저|메일|메시지|목록|리스트|파일|보인다|보이는지|나타|표시|온다|오는지|받는다|받는지/;
 // 외부 상황이 바뀔 때까지 기다려야 하는 확인은 사용자가 지금 해 볼 수 없다.

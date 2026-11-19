@@ -263,9 +263,9 @@ describe("대화", () => {
       expect(f).toHaveBeenCalledTimes(1);
     });
 
-    it("확인 방법이 3개 이상이거나 화면에서 볼 것이 적혀 있지 않으면 다시 받는다", async () => {
-      const three = replyOf({ ...good, verification: [good.verification[0], "동네 이름이 화면에 보인다", "알림 내용이 화면에 보인다"] });
-      const unseen = replyOf({ ...good, verification: [good.verification[0], "내용을 살펴본다"] });
+    it("확인 방법이 2개 이상이거나 화면에서 볼 것이 적혀 있지 않으면 다시 받는다", async () => {
+      const three = replyOf({ ...good, verification: [good.verification[0], "동네 이름이 화면에 보인다"] });
+      const unseen = replyOf({ ...good, verification: ["내용을 살펴본다"] });
       for (const bad of [three, unseen]) {
         const f = seq(bad, replyOf(good));
         await handleAgentRequest(specBase, f);
@@ -291,7 +291,7 @@ describe("대화", () => {
     });
 
     it("화면에서 무엇을 보면 되는지 적힌 구체적인 확인 방법은 다시 받지 않는다", async () => {
-      const f = seq(replyOf({ ...good, verification: ["아침 7시에 메신저로 미세먼지 정보를 받는다", "동네를 고르면 선택한 동네 이름이 화면에 보인다"] }));
+      const f = seq(replyOf({ ...good, verification: ["아침 7시에 메신저로 미세먼지 정보를 받는다"] }));
       await handleAgentRequest(specBase, f);
       expect(f).toHaveBeenCalledTimes(1);
     });
