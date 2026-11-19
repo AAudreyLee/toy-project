@@ -28,6 +28,14 @@ describe("키 확인", () => {
   it.each([401, 403, 404, 429])("Azure가 %i로 거부하면 키 문제로 알린다", async (status) => {
     const res = await handleAgentRequest({ kind: "verify", connection }, azure("", status));
     expect(res).toMatchObject({ ok: false, code: "key" });
+    if (!res.ok) expect(res.message).toContain(`HTTP ${status}`);
+  });
+
+  it("403은 네트워크 설정, 404는 배포 이름을 확인하라고 알려 준다", async () => {
+    const forbidden = await handleAgentRequest({ kind: "verify", connection }, azure("", 403));
+    const missing = await handleAgentRequest({ kind: "verify", connection }, azure("", 404));
+    if (!forbidden.ok) expect(forbidden.message).toContain("네트워크");
+    if (!missing.ok) expect(missing.message).toContain("배포 이름");
   });
 
   it("세 입력 중 하나라도 비었거나 엔드포인트가 https가 아니면 호출하지 않고 키 문제로 알린다", async () => {
