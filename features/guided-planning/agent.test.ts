@@ -239,6 +239,63 @@ describe("대화", () => {
       }
     });
 
+    it.each(["기록이 잘 되었는지 다시 확인한다", "올바른 통화의 환율이 반영되는지 확인한다", "받은 정보와 기상청의 수치를 비교한다", "이메일 내용이 요약이 잘 되었는지 본다"])(
+      "막연하거나 정확성을 따지는 확인 방법(%s)은 다시 받는다",
+      async (vagueItem) => {
+        const f = seq(replyOf({ ...good, verification: [good.verification[0], vagueItem] }), replyOf(good));
+        await handleAgentRequest(specBase, f);
+        expect(f).toHaveBeenCalledTimes(2);
+      },
+    );
+
+    it("확인 방법이 범위에 없는 기능(알림 전송, 다른 사람)을 확인하라고 하면 다시 받는다", async () => {
+      const inScope = { ...good, result: "동네를 고르면 화면에 동네 이름이 보인다", scope: ["동네 한 곳을 고른다", "고른 동네를 본다"], verification: ["동네를 고르면 동네 이름이 화면에 보인다"] };
+      for (const outside of ["선택한 일정이 그룹원들에게 알림으로 전송되는지 확인한다", "다른 사람들의 일정을 확인할 수 있는지 본다"]) {
+        const f = seq(replyOf({ ...inScope, verification: [inScope.verification[0], outside] }), replyOf(inScope));
+        await handleAgentRequest(specBase, f);
+        expect(f).toHaveBeenCalledTimes(2);
+      }
+    });
+
+    it("범위나 결과에 알림이 들어 있으면 알림을 확인하는 방법은 허용한다", async () => {
+      const f = seq(replyOf({ ...good, verification: ["동네를 고르고 다음 날 아침에 알림이 오는지 본다"] }));
+      await handleAgentRequest(specBase, f);
+      expect(f).toHaveBeenCalledTimes(1);
+    });
+
+    it("확인 방법이 2개 이상이거나 화면에서 볼 것이 적혀 있지 않으면 다시 받는다", async () => {
+      const three = replyOf({ ...good, verification: [good.verification[0], "동네 이름이 화면에 보인다"] });
+      const unseen = replyOf({ ...good, verification: ["내용을 살펴본다"] });
+      for (const bad of [three, unseen]) {
+        const f = seq(bad, replyOf(good));
+        await handleAgentRequest(specBase, f);
+        expect(f).toHaveBeenCalledTimes(2);
+      }
+    });
+
+    it("외부 상황이 바뀌기를 기다려야 하는 확인 방법은 설정 직후 해 볼 수 있는 확인으로 바꿔 달라고 다시 받는다", async () => {
+      const wait = replyOf({ ...good, verification: ["환율 값을 설정하고 환율이 그 값 아래로 떨어지면 알림이 오는지 본다"] });
+      const f = seq(wait, replyOf(good));
+      await handleAgentRequest(specBase, f);
+      expect(f).toHaveBeenCalledTimes(2);
+      const retry = JSON.parse(String((f.mock.calls[1] as unknown as [string, RequestInit])[1].body)).messages.at(-1).content as string;
+      expect(retry).toContain("시험");
+    });
+
+    it("결과에 서로 다른 일이 이어 붙어 있으면(하고, 그리고, 및) 하나로 줄여 다시 받는다", async () => {
+      for (const result of ["운동 내용을 기록하고 칭찬 메시지를 받는다", "영화를 기록하며 추천 영화를 받는다 그리고 알림이 온다"]) {
+        const f = seq(replyOf({ ...good, result }), replyOf(good));
+        await handleAgentRequest(specBase, f);
+        expect(f).toHaveBeenCalledTimes(2);
+      }
+    });
+
+    it("화면에서 무엇을 보면 되는지 적힌 구체적인 확인 방법은 다시 받지 않는다", async () => {
+      const f = seq(replyOf({ ...good, verification: ["아침 7시에 메신저로 미세먼지 정보를 받는다"] }));
+      await handleAgentRequest(specBase, f);
+      expect(f).toHaveBeenCalledTimes(1);
+    });
+
     it("바뀐 방향 반영 요청인데 Spec이 하나도 바뀌지 않으면 다시 받는다", async () => {
       const f = seq({ message: "반영했어요", doc: {} }, replyOf(good));
       const res = await handleAgentRequest({ ...specBase, doc: good, messages: [{ role: "agent", text: "옛 질문" }], reflect: "약속하는 변화: 시간을 직접 고른다" }, f);
