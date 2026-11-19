@@ -70,6 +70,26 @@ export function parseIdeas(text: string): Idea[] {
 
 export type WireMessage = { role: "system" | "user" | "assistant"; content: string };
 
+// Azure가 돌려준 오류 설명을 짧게 읽는다. 키가 섞여 나오지 않도록 지우고, 읽지 못하면 빈 문자열이다.
+async function azureDetail(res: Response, apiKey: string): Promise<string> {
+  try {
+    const text = await res.text();
+    let msg = text;
+    try {
+      const j = JSON.parse(text) as { error?: { message?: unknown } | string; message?: unknown };
+      const m = typeof j.error === "string" ? j.error : j.error?.message ?? j.message;
+      msg = typeof m === "string" ? m : "";
+    } catch {
+      // JSON이 아니면 본문 앞부분을 그대로 쓴다.
+    }
+    const key = apiKey.trim();
+    const clean = (key ? msg.split(key).join("***") : msg).replace(/\s+/g, " ").trim();
+    return clean.length > 200 ? `${clean.slice(0, 200)}…` : clean;
+  } catch {
+    return "";
+  }
+}
+
 export async function callAzure(
   c: Connection,
   messages: WireMessage[],
@@ -97,9 +117,13 @@ export async function callAzure(
     throw new AgentError("failed", "Azure OpenAI에 연결하지 못했어요.");
   }
   if (res.status in KEY_HINTS) {
-    throw new AgentError("key", `Azure OpenAI가 요청을 거부했어요 (HTTP ${res.status}). ${KEY_HINTS[res.status]}`);
+    const detail = await azureDetail(res, c.apiKey);
+    throw new AgentError("key", `Azure OpenAI가 요청을 거부했어요 (HTTP ${res.status}). ${KEY_HINTS[res.status]}${detail ? ` Azure 응답: ${detail}` : ""}`);
   }
-  if (!res.ok) throw new AgentError("failed", `Azure OpenAI가 오류를 돌려줬어요 (${res.status}).`);
+  if (!res.ok) {
+    const detail = await azureDetail(res, c.apiKey);
+    throw new AgentError("failed", `Azure OpenAI가 오류를 돌려줬어요 (${res.status}).${detail ? ` Azure 응답: ${detail}` : ""}`);
+  }
   try {
     const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
     return data.choices?.[0]?.message?.content ?? "";
