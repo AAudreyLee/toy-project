@@ -45,6 +45,14 @@ describe("서버 저장 시스템의 코드 검사", () => {
     expect(validateGenerated({ "app/page.tsx": goodPage, "app/api/notices/route.ts": other }, db).join()).toContain("SECRET_KEY");
   });
 
+  it("process.env를 변수에 담거나 대괄호로 읽는 것도 막는다(DATABASE_URL을 직접 읽는 경우만 허용)", () => {
+    for (const sneaky of ["const e = process.env;\n", 'const k = process.env["DATABASE_URL"];\n', "const { DATABASE_URL } = process.env;\n"]) {
+      const route = goodRoute + sneaky;
+      expect(validateGenerated({ "app/page.tsx": goodPage, "app/api/notices/route.ts": route }, db).length, sneaky).toBeGreaterThan(0);
+      expect(validateGenerated({ "app/page.tsx": goodPage + sneaky }).length, sneaky).toBeGreaterThan(0);
+    }
+  });
+
   it("화면 코드(page, components)에서는 환경 변수, 데이터베이스 패키지, lib 가져오기가 모두 안 된다(비밀 키가 브라우저로 내려가지 않게)", () => {
     const route = { "app/api/notices/route.ts": goodRoute };
     for (const leak of ['const u = process.env.DATABASE_URL;\n', 'import { neon } from "@neondatabase/serverless";\n', 'import { sql } from "@/lib/db";\n', 'import { sql } from "../lib/db";\n']) {

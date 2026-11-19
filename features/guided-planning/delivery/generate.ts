@@ -94,9 +94,9 @@ export function validateGenerated(files: Record<string, string>, opts: CodeOptio
     if (!content.trim()) problems.push(`${path} 파일이 비어 있어요.`);
     if (content.length > MAX_FILE_CHARS) problems.push(`${path} 파일이 너무 커요. 더 작게 만들어 주세요.`);
     if (/import\.meta\.env/.test(content)) problems.push(`${path}에서 환경 변수를 쓸 수 없어요.`);
-    for (const m of content.matchAll(/process\.env(?:\.([A-Za-z0-9_]+)|\[)/g)) {
+    for (const m of content.matchAll(/process\.env(?:\.([A-Za-z0-9_]+))?/g)) {
       if (!server) problems.push(`${path}에서 환경 변수를 쓸 수 없어요. ${opts.database ? "화면 코드에서는 데이터베이스 접속 정보를 읽을 수 없고, 서버 코드(app/api, lib)에서만 읽어요." : "키나 비밀 값 없이 동작해야 해요."}`);
-      else if (m[1] !== "DATABASE_URL") problems.push(`${path}에서 DATABASE_URL 외의 환경 변수를 쓸 수 없어요: ${m[1] ?? "process.env[...]"}`);
+      else if (m[1] !== "DATABASE_URL") problems.push(`${path}에서 DATABASE_URL 외의 환경 변수를 쓸 수 없어요: ${m[1] ?? "process.env를 이름 없이 쓰는 것"}`);
     }
     if (server && /^await\s/m.test(content)) problems.push(`${path}에서 파일 맨 바깥에 await를 쓸 수 없어요. 빌드할 때 데이터베이스에 접속해 빌드가 실패해요. 표 만들기와 쿼리는 GET, POST 같은 함수 안에서만 실행해요.`);
     if (/@jsx(?:ImportSource|Runtime|Frag)?\b/.test(content)) problems.push(`${path}에서 @jsx 지시 주석을 쓸 수 없어요. 설치되지 않은 패키지를 끌어와 빌드가 실패해요.`);
