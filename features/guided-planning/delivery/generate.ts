@@ -5,8 +5,14 @@ import { DeliveryError } from "./errors";
 const MAX_RETRIES = 2;
 const MAX_FILE_CHARS = 40_000;
 const ALLOWED_PATH = /^(app\/page\.tsx|components\/[A-Za-z0-9_-]+\.tsx)$/;
+// 서버 저장이 필요한 시스템에만 허용하는 서버 코드 경로
+const SERVER_PATH = /^(app\/api\/[a-z0-9-]+\/route\.ts|lib\/[A-Za-z0-9_-]+\.ts)$/;
+const NEON_PACKAGE = "@neondatabase/serverless";
+const NEON_VERSION = "1.2.1";
 
-export function starterFiles(repoName: string): Record<string, string> {
+export type CodeOptions = { database?: boolean };
+
+export function starterFiles(repoName: string, opts: CodeOptions = {}): Record<string, string> {
   return {
     "package.json": JSON.stringify(
       {
@@ -14,7 +20,7 @@ export function starterFiles(repoName: string): Record<string, string> {
         version: "0.1.0",
         private: true,
         scripts: { dev: "next dev", build: "next build", start: "next start" },
-        dependencies: { next: "16.4.5", react: "19.3.1", "react-dom": "19.3.1" },
+        dependencies: { next: "16.4.5", react: "19.3.1", "react-dom": "19.3.1", ...(opts.database ? { [NEON_PACKAGE]: NEON_VERSION } : {}) },
         devDependencies: { typescript: "^5", "@types/node": "^22", "@types/react": "^19", "@types/react-dom": "^19" },
       },
       null,
@@ -75,23 +81,36 @@ export function starterFiles(repoName: string): Record<string, string> {
 }
 
 /** 생성된 파일이 허용된 경로와 범위를 지키는지 검사해, 어긋난 곳을 다시 쓰라고 안내할 문장으로 돌려준다. */
-export function validateGenerated(files: Record<string, string>): string[] {
+export function validateGenerated(files: Record<string, string>, opts: CodeOptions = {}): string[] {
   const problems: string[] = [];
   if (!("app/page.tsx" in files)) problems.push("app/page.tsx 파일이 꼭 있어야 해요.");
   for (const [path, content] of Object.entries(files)) {
-    if (!ALLOWED_PATH.test(path)) {
-      problems.push(`허용되지 않는 파일 경로예요: ${path} (app/page.tsx와 components/이름.tsx만 쓸 수 있어요).`);
+    const server = Boolean(opts.database) && SERVER_PATH.test(path);
+    if (!ALLOWED_PATH.test(path) && !server) {
+      const allowed = opts.database ? "app/page.tsx, components/이름.tsx, app/api/이름/route.ts, lib/이름.ts만" : "app/page.tsx와 components/이름.tsx만";
+      problems.push(`허용되지 않는 파일 경로예요: ${path} (${allowed} 쓸 수 있어요).`);
       continue;
     }
     if (!content.trim()) problems.push(`${path} 파일이 비어 있어요.`);
     if (content.length > MAX_FILE_CHARS) problems.push(`${path} 파일이 너무 커요. 더 작게 만들어 주세요.`);
-    if (/process\.env|import\.meta\.env/.test(content)) problems.push(`${path}에서 환경 변수를 쓸 수 없어요. 키나 비밀 값 없이 동작해야 해요.`);
+    if (/import\.meta\.env/.test(content)) problems.push(`${path}에서 환경 변수를 쓸 수 없어요.`);
+    for (const m of content.matchAll(/process\.env(?:\.([A-Za-z0-9_]+)|\[)/g)) {
+      if (!server) problems.push(`${path}에서 환경 변수를 쓸 수 없어요. ${opts.database ? "화면 코드에서는 데이터베이스 접속 정보를 읽을 수 없고, 서버 코드(app/api, lib)에서만 읽어요." : "키나 비밀 값 없이 동작해야 해요."}`);
+      else if (m[1] !== "DATABASE_URL") problems.push(`${path}에서 DATABASE_URL 외의 환경 변수를 쓸 수 없어요: ${m[1] ?? "process.env[...]"}`);
+    }
+    if (server && /^await\s/m.test(content)) problems.push(`${path}에서 파일 맨 바깥에 await를 쓸 수 없어요. 빌드할 때 데이터베이스에 접속해 빌드가 실패해요. 표 만들기와 쿼리는 GET, POST 같은 함수 안에서만 실행해요.`);
     if (/@jsx(?:ImportSource|Runtime|Frag)?\b/.test(content)) problems.push(`${path}에서 @jsx 지시 주석을 쓸 수 없어요. 설치되지 않은 패키지를 끌어와 빌드가 실패해요.`);
     if (/\brequire\s*\(/.test(content)) problems.push(`${path}에서 require를 쓸 수 없어요. react, next, 프로젝트 안의 파일만 import로 가져와요.`);
     const specifiers = [...content.matchAll(/(?:from|import\()\s*["']([^"']+)["']/g)].map((m) => m[1]);
     for (const s of specifiers) {
-      const ok = s === "react" || s === "react-dom" || s.startsWith("next/") || s.startsWith("./") || s.startsWith("../") || s.startsWith("@/");
-      if (!ok) problems.push(`${path}에서 허용되지 않는 패키지를 가져왔어요: ${s} (react, next, 프로젝트 안의 파일만 쓸 수 있어요).`);
+      const base = s === "react" || s === "react-dom" || s.startsWith("next/") || s.startsWith("./") || s.startsWith("../") || s.startsWith("@/");
+      if (!server) {
+        // 화면 코드가 서버 코드나 데이터베이스 패키지를 가져오면 접속 정보가 브라우저로 내려갈 수 있다.
+        if (opts.database && (s === NEON_PACKAGE || /(^|\/)lib\//.test(s))) problems.push(`${path}(화면 코드)에서 ${s}를 가져올 수 없어요. 데이터는 fetch로 app/api의 서버 코드를 불러 읽고 써요.`);
+        else if (!base) problems.push(`${path}에서 허용되지 않는 패키지를 가져왔어요: ${s} (react, next, 프로젝트 안의 파일만 쓸 수 있어요).`);
+      } else if (!base && s !== NEON_PACKAGE) {
+        problems.push(`${path}에서 허용되지 않는 패키지를 가져왔어요: ${s} (next, ${NEON_PACKAGE}, 프로젝트 안의 파일만 쓸 수 있어요).`);
+      }
     }
   }
   return problems;
@@ -107,30 +126,34 @@ function specSummary(spec: SpecDoc, direction: DirectionDoc): string {
   return [`서비스 방향:\n${JSON.stringify(direction, null, 2)}`, `첫 Spec:\n${JSON.stringify(spec, null, 2)}`].join("\n\n");
 }
 
-const SUPPORT_SYSTEM = `당신은 비개발자가 만든 첫 Spec을 "추가 계정이나 키 없이 한 번에 만들어 배포할 수 있는지" 판정하는 심사자입니다.
+const SUPPORT_SYSTEM = `당신은 비개발자가 만든 첫 Spec을 "사용자의 GitHub와 Vercel 계정만으로(필요하면 Vercel에서 만드는 데이터베이스까지) 한 번에 만들어 배포할 수 있는지" 판정하는 심사자입니다.
 기본 판단: 만들 수 없다고 확실한 이유가 Spec에 적혀 있을 때만 supported를 false로 합니다. 애매하면 true입니다.
 판정 대상은 첫 Spec의 result, scope, verification에 명시된 기능뿐입니다. 서비스 방향 문서는 배경일 뿐이어서, 거기에만 있고 첫 Spec에는 없는 기능(알림, 공유 등)은 판단하지 않습니다. "회원", "팀원" 같은 말이 있어도 첫 Spec이 다른 기기나 다른 사람의 화면을 명시하지 않으면 한 사람이 쓰는 화면으로 읽습니다.
 
+서버 저장 판단(needsDatabase): 서버 저장은 만들 수 있는 것입니다. 다른 기기나 다른 사람의 화면에도 같은 데이터가 보여야 하는 공유 데이터(모두가 같이 보고 쓰는 공지·할 일 목록, 설문 수집, 방명록 등, 로그인 없이 주소를 아는 누구나 쓰는 것)는 supported true, needsDatabase true입니다. 같은 브라우저에서 다시 열어 보는 기록이나 한 사람이 쓰는 화면이면 needsDatabase는 false입니다. 애매하면 false입니다.
+데이터베이스나 서버 저장이 필요하다는 이유만으로는 절대 supported를 false로 하지 않습니다. 그런 Spec의 답은 {"supported": true, "needsDatabase": true, "reason": "", "hint": ""}입니다.
+
 만들 수 있는 것(supported: true):
 - 한 화면 안에서 값을 입력하고, 선택하고, 계산하고, 목록으로 쌓아 보여 주는 것. 새로고침하면 사라져도 괜찮습니다.
-- "기록한다", "저장 버튼을 누른다", "목록에 추가한다"는 같은 브라우저 안에서 보여 주고 다시 열어도 남기는 것(브라우저 저장소)으로 만들 수 있습니다. 데이터베이스나 서버가 필요하다는 뜻으로 읽지 않습니다.
+- "기록한다", "저장 버튼을 누른다", "목록에 추가한다"만 적혀 있고 다른 기기나 다른 사람이 같은 데이터를 본다는 말이 없으면, 같은 브라우저 안에서 보여 주고 다시 열어도 남기는 것(브라우저 저장소)으로 만들 수 있습니다. 이때 needsDatabase는 false입니다.
 - 한 사람이 한 화면에서 쓰는 것으로 읽을 수 있으면 만들 수 있습니다. "팀원", "참가자"가 나와도 한 사람이 이름을 입력해 보는 화면이면 true입니다.
+- 로그인 없이 주소를 아는 누구나 같은 데이터를 보고 쓰는 공유 데이터. 다른 기기와 다른 사람의 화면에도 같은 데이터가 보여야 하는 공지판, 방명록, 공유 목록, 투표와 설문 수집, 신청 명단이 여기에 듭니다. 이런 Spec은 데이터를 서버의 데이터베이스에 저장하는 시스템으로 만들 수 있으니 supported는 true, needsDatabase는 true입니다.
 - 체크리스트, 할 일 목록, 가계부 입력과 합계, 투표나 선택 결과 보기, 간단한 게임, 고정된 문구(칭찬 메시지 등)를 보여 주는 것.
 
 만들 수 없는 것(supported: false):
-- 다른 기기나 다른 사람의 화면에도 같은 데이터가 보여야 하는 것(서버 저장, 여러 사람이 각자 기기에서 함께 쓰는 것, 초대와 공유).
+- 사용자마다 따로 보이는 비공개 데이터, 특정 사람에게만 보이게 하는 초대와 공유 권한(로그인이 있어야 하는 것).
 - 메일, 메신저, 문자, 푸시 같은 알림을 보내는 것, 정해진 시각에 자동으로 도는 예약 실행(매일 아침 7시 같은 것).
 - 로그인과 사용자별 화면.
 - 키나 계정 가입이 필요한 외부 서비스를 부르는 것: AI가 글을 써 주거나 요약하거나 추천하는 것, 사진 업로드와 분석, 지도·장소·맛집·카페 데이터, 박스오피스·날씨·대여소·문화행사 같은 공공 데이터(대부분 키가 필요합니다), 뉴스·시세 같은 외부 데이터 조회.
 
-답은 JSON 객체 하나로만 합니다: {"supported": true|false, "reason": "만들 수 없는 이유를 쉬운 말 한두 문장(만들 수 있으면 빈 문자열)", "hint": "Spec을 어떻게 줄이면 만들 수 있는지 한 문장(만들 수 있으면 빈 문자열)"}`;
+답은 JSON 객체 하나로만 합니다: {"supported": true|false, "needsDatabase": true|false, "reason": "만들 수 없는 이유를 쉬운 말 한두 문장(만들 수 있으면 빈 문자열)", "hint": "Spec을 어떻게 줄이면 만들 수 있는지 한 문장(만들 수 있으면 빈 문자열)"}`;
 
 export async function judgeSupport(
   c: Connection,
   spec: SpecDoc,
   direction: DirectionDoc,
   f: typeof fetch = fetch,
-): Promise<{ supported: boolean; reason: string; hint: string }> {
+): Promise<{ supported: boolean; needsDatabase: boolean; reason: string; hint: string }> {
   const wire: WireMessage[] = [
     { role: "system", content: SUPPORT_SYSTEM },
     { role: "user", content: specSummary(spec, direction) },
@@ -142,9 +165,9 @@ export async function judgeSupport(
     throw asDeliveryError(e);
   }
   try {
-    const raw = extractJson(text) as { supported?: unknown; reason?: unknown; hint?: unknown };
+    const raw = extractJson(text) as { supported?: unknown; needsDatabase?: unknown; reason?: unknown; hint?: unknown };
     if (typeof raw.supported !== "boolean") throw new Error("supported가 없습니다");
-    return { supported: raw.supported, reason: typeof raw.reason === "string" ? raw.reason : "", hint: typeof raw.hint === "string" ? raw.hint : "" };
+    return { supported: raw.supported, needsDatabase: raw.supported && raw.needsDatabase === true, reason: typeof raw.reason === "string" ? raw.reason : "", hint: typeof raw.hint === "string" ? raw.hint : "" };
   } catch {
     throw new DeliveryError("failed", "만들 수 있는 Spec인지 판단하지 못했어요. 다시 시도해 주세요.");
   }
@@ -161,7 +184,22 @@ const CODE_RULES = `규칙:
 - 타입 오류 없이 next build가 통과해야 합니다. any는 쓰지 말고 이벤트와 상태에 타입을 적습니다.
 답은 JSON 객체 하나로만 합니다: {"files": {"app/page.tsx": "파일 전체 내용", "components/이름.tsx": "..."}}`;
 
-async function askFiles(c: Connection, wire: WireMessage[], f: typeof fetch): Promise<Record<string, string>> {
+const DB_RULES = `규칙:
+- 사용할 수 있는 파일은 app/page.tsx(꼭 필요), components/이름.tsx, 서버 코드 app/api/이름/route.ts(이름은 소문자와 하이픈), lib/이름.ts입니다. 화면 파일 이름은 영문 알파벳과 숫자만 쓰는 PascalCase(예: TodoItem.tsx)로 하고 한글 파일 이름은 쓰지 않습니다. 그 밖의 파일은 이미 준비되어 있습니다.
+- 이 시스템은 입력한 데이터를 서버의 데이터베이스(Postgres)에 저장해, 다른 기기와 다른 사람도 같은 데이터를 보고 씁니다. 로그인은 없습니다. 브라우저 저장소(localStorage)는 쓰지 않습니다.
+- 화면 파일(app/page.tsx, components)은 맨 위에 "use client";를 쓰고, fetch("/api/이름")으로 서버 코드를 불러 데이터를 읽고 씁니다. 화면 파일에서는 환경 변수, @neondatabase/serverless, lib 파일을 가져올 수 없습니다.
+- 서버 코드에서만 데이터베이스에 접근합니다. 접속은 import { neon } from "@neondatabase/serverless"; 와 const sql = neon(process.env.DATABASE_URL!); 로 하고, 환경 변수는 DATABASE_URL 하나만 읽습니다. 쿼리는 sql 함수를 태그드 템플릿으로 호출해 쓰고(sql 뒤에 백틱 문자열), 값은 문자열을 이어 붙이지 말고 템플릿의 자리표시자에 넣어 SQL 주입을 피합니다. 결과는 행의 배열입니다.
+- 표는 서버 코드가 처음 불릴 때 \`CREATE TABLE IF NOT EXISTS\`로 직접 만듭니다. 별도 마이그레이션 파일은 없습니다. 표 만들기와 쿼리는 GET, POST 같은 함수 안에서만 실행하고, 파일 맨 바깥(최상위)에서는 await를 쓰지 않습니다(빌드할 때 데이터베이스에 접속하면 빌드가 실패합니다). 표 만들기는 매 요청 때 CREATE TABLE IF NOT EXISTS를 실행해도 됩니다.
+- route.ts는 맨 위에 \`export const dynamic = "force-dynamic";\`를 쓰고 GET, POST 같은 함수를 export하며 Response.json으로 답합니다. 입력 값은 문자열 길이를 제한하고 비어 있으면 400으로 답합니다.
+- react와 next, @neondatabase/serverless(서버 코드에서만), 프로젝트 안의 파일만 가져옵니다. 다른 패키지는 설치되어 있지 않습니다.
+- 모든 화면 문구는 한국어입니다. 스타일은 globals.css에 있는 card, muted 클래스와 기본 input, button 모양을 쓰고, 필요하면 인라인 style을 씁니다.
+- 첫 Spec의 result 하나를 만족하는 가장 단순한 화면을 만들고, scope에 없는 기능은 넣지 않습니다. verification에 적힌 확인을 화면에서 바로 해 볼 수 있어야 합니다.
+- 타입 오류 없이 next build가 통과해야 합니다. any는 쓰지 말고 이벤트, 상태, 쿼리 결과에 타입을 적습니다.
+답은 JSON 객체 하나로만 합니다: {"files": {"app/page.tsx": "파일 전체 내용", "app/api/이름/route.ts": "...", "components/이름.tsx": "..."}}`;
+
+const rulesFor = (opts: CodeOptions) => (opts.database ? DB_RULES : CODE_RULES);
+
+async function askFiles(c: Connection, wire: WireMessage[], opts: CodeOptions, f: typeof fetch): Promise<Record<string, string>> {
   for (let attempt = 0; ; attempt++) {
     let text: string;
     try {
@@ -174,7 +212,7 @@ async function askFiles(c: Connection, wire: WireMessage[], f: typeof fetch): Pr
     try {
       const raw = extractJson(text) as { files?: Record<string, unknown> };
       files = Object.fromEntries(Object.entries(raw.files ?? {}).filter(([, v]) => typeof v === "string")) as Record<string, string>;
-      problems = validateGenerated(files);
+      problems = validateGenerated(files, opts);
     } catch {
       problems = ['JSON 형식이 아니에요. {"files": {...}} 형식으로 다시 주세요.'];
     }
@@ -186,33 +224,33 @@ async function askFiles(c: Connection, wire: WireMessage[], f: typeof fetch): Pr
 
 export async function generateFiles(
   c: Connection,
-  input: { spec: SpecDoc; direction: DirectionDoc; repoName: string },
+  input: { spec: SpecDoc; direction: DirectionDoc; repoName: string; database?: boolean },
   f: typeof fetch = fetch,
 ): Promise<Record<string, string>> {
   const wire: WireMessage[] = [
     {
       role: "system",
-      content: `당신은 첫 Spec을 Next.js 화면 하나로 구현하는 개발자입니다. 프로젝트 뼈대(package.json, tsconfig, layout, globals.css)는 준비되어 있고, 당신은 화면 코드만 만듭니다.\n${CODE_RULES}`,
+      content: `당신은 첫 Spec을 Next.js 화면 하나로 구현하는 개발자입니다. 프로젝트 뼈대(package.json, tsconfig, layout, globals.css)는 준비되어 있고, 당신은 화면 코드만 만듭니다.\n${rulesFor(input)}`,
     },
     { role: "user", content: specSummary(input.spec, input.direction) },
   ];
-  const generated = await askFiles(c, wire, f);
-  return { ...starterFiles(input.repoName), ...generated };
+  const generated = await askFiles(c, wire, input, f);
+  return { ...starterFiles(input.repoName, input), ...generated };
 }
 
 export async function fixFiles(
   c: Connection,
-  input: { files: Record<string, string>; buildLog: string },
+  input: { files: Record<string, string>; buildLog: string; database?: boolean },
   f: typeof fetch = fetch,
 ): Promise<Record<string, string>> {
-  const editable = Object.fromEntries(Object.entries(input.files).filter(([p]) => ALLOWED_PATH.test(p)));
+  const editable = Object.fromEntries(Object.entries(input.files).filter(([p]) => ALLOWED_PATH.test(p) || (input.database && SERVER_PATH.test(p))));
   const wire: WireMessage[] = [
     {
       role: "system",
-      content: `당신은 배포 빌드가 실패한 Next.js 화면 코드를 고치는 개발자입니다. 아래 빌드 로그의 원인을 고쳐 파일 전체를 다시 줍니다.\n${CODE_RULES}`,
+      content: `당신은 배포 빌드가 실패한 Next.js 화면 코드를 고치는 개발자입니다. 아래 빌드 로그의 원인을 고쳐 파일 전체를 다시 줍니다.\n${rulesFor(input)}`,
     },
     { role: "user", content: `빌드 로그:\n${input.buildLog}\n\n현재 코드:\n${JSON.stringify({ files: editable }, null, 2)}` },
   ];
-  const fixed = await askFiles(c, wire, f);
+  const fixed = await askFiles(c, wire, input, f);
   return { ...input.files, ...fixed };
 }
